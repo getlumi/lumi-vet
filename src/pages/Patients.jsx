@@ -31,18 +31,18 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
   useEffect(() => { fetchAll() }, [])
 
   const fetchAll = async () => {
-    const { data: lumi } = await supabase
+    const { data: lumi, error: lumiErr } = await supabase
       .from('vet_patients')
       .select('*, pets(id,name,breed,photo_url,birthdate,gender,lumi_id,species), profiles(id,name,phone,email)')
       .eq('clinic_id', clinic.id)
-      .order('last_visit', { ascending: false })
+    if (lumiErr) console.error('lumi error:', lumiErr.message)
     setLumiPatients(lumi || [])
 
-    const { data: regular } = await supabase
+    const { data: regular, error: regErr } = await supabase
       .from('vet_regular_patients')
       .select('*')
       .eq('clinic_id', clinic.id)
-      .order('last_visit', { ascending: false })
+    if (regErr) console.error('regular error:', regErr.message)
     setRegularPatients(regular || [])
   }
 
