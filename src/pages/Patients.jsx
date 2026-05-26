@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
 export default function Patients({ clinic, openNew, onNavigateAppointment }) {
-  const [tab, setTab]                 = useState('lumi')
+  const [tab, setTab]                 = useState('todos')
   const [lumiPatients, setLumiPatients]       = useState([])
   const [regularPatients, setRegularPatients] = useState([])
   const [search, setSearch]           = useState('')
