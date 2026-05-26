@@ -5,12 +5,15 @@ const HOURS = ['08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30','
 const STATUS_COLORS = { pending:'badge-amber', confirmed:'badge-green', completed:'badge-purple', cancelled:'badge-red' }
 const STATUS_LABELS = { pending:'Pendiente', confirmed:'Confirmada', completed:'Completada', cancelled:'Cancelada' }
 
-export default function Appointments({ clinic }) {
+export default function Appointments({ clinic, initialForm }) {
   const [appointments, setAppointments] = useState([])
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0,10))
-  const [showModal, setShowModal]       = useState(false)
+  const [showModal, setShowModal]       = useState(!!initialForm)
   const [loading, setLoading]           = useState(true)
-  const [form, setForm] = useState({ pet_name:'', owner_name:'', time:'09:00', notes:'', status:'confirmed', price:'' })
+  const [lumiLoading, setLumiLoading]   = useState(false)
+
+  const emptyForm = { lumi_code:'', pet_id:null, pet_name:'', owner_name:'', time:'09:00', notes:'', status:'confirmed', price:'' }
+  const [form, setForm] = useState(initialForm || emptyForm)
 
   useEffect(() => { fetchAppointments() }, [selectedDate])
 
@@ -26,16 +29,39 @@ export default function Appointments({ clinic }) {
     setLoading(false)
   }
 
+  // Buscar por código Lumi
+  const searchLumi = async (code) => {
+    if (!code || code.length < 10) return
+    setLumiLoading(true)
+    const { data: pet } = await supabase
+      .from('pets')
+      .select('id, name, profiles(name)')
+      .eq('lumi_id', code.trim().toUpperCase())
+      .single()
+    if (pet) {
+      setForm(f => ({ ...f, pet_id: pet.id, pet_name: pet.name, owner_name: pet.profiles?.name || '' }))
+    }
+    setLumiLoading(false)
+  }
+
   const saveAppointment = async () => {
+    if (!form.pet_name.trim() || !form.owner_name.trim()) return
     const { error } = await supabase.from('vet_appointments').insert({
-      clinic_id: clinic.id,
-      date: selectedDate,
-      time: form.time,
-      notes: form.notes,
-      status: form.status,
-      price: form.price ? parseFloat(form.price) : null,
+      clinic_id:  clinic.id,
+      date:       selectedDate,
+      time:       form.time,
+      notes:      form.notes,
+      status:     form.status,
+      price:      form.price ? parseFloat(form.price) : null,
+      pet_id:     form.pet_id || null,
+      pet_name:   form.pet_name,
+      owner_name: form.owner_name,
     })
-    if (!error) { fetchAppointments(); setShowModal(false); setForm({ pet_name:'', owner_name:'', time:'09:00', notes:'', status:'confirmed', price:'' }) }
+    if (!error) {
+      fetchAppointments()
+      setShowModal(false)
+      setForm(emptyForm)
+    }
   }
 
   const updateStatus = async (id, status) => {
@@ -45,12 +71,13 @@ export default function Appointments({ clinic }) {
 
   const formatDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString('es-MX', { weekday:'long', day:'numeric', month:'long' })
 
-  // Navegar días
   const changeDay = (days) => {
     const d = new Date(selectedDate + 'T12:00:00')
     d.setDate(d.getDate() + days)
     setSelectedDate(d.toISOString().slice(0,10))
   }
+
+  const canSave = form.pet_name.trim() && form.owner_name.trim()
 
   return (
     <div>
@@ -59,12 +86,12 @@ export default function Appointments({ clinic }) {
           <p style={{ fontSize:22, fontWeight:800, margin:'0 0 4px' }}>Agenda</p>
           <p style={{ fontSize:14, color:'var(--text-secondary)', margin:0, textTransform:'capitalize' }}>{formatDate(selectedDate)}</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+        <button className="btn btn-primary" onClick={() => { setForm(emptyForm); setShowModal(true) }}>
           <i className="ti ti-plus" /> Nueva cita
         </button>
       </div>
 
-      {/* Navegación de fecha */}
+      {/* Navegación */}
       <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
         <button className="btn btn-secondary btn-icon" onClick={() => changeDay(-1)}><i className="ti ti-chevron-left" /></button>
         <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="input" style={{ width:'auto' }} />
@@ -73,7 +100,7 @@ export default function Appointments({ clinic }) {
         <span className="badge badge-purple" style={{ marginLeft:'auto' }}>{appointments.length} citas</span>
       </div>
 
-      {/* Lista de citas */}
+      {/* Lista */}
       <div className="card">
         {loading ? (
           <div style={{ textAlign:'center', padding:40, color:'var(--text-muted)' }}>Cargando...</div>
@@ -81,15 +108,15 @@ export default function Appointments({ clinic }) {
           <div style={{ textAlign:'center', padding:'40px 20px' }}>
             <i className="ti ti-calendar" style={{ fontSize:40, color:'var(--text-muted)', display:'block', marginBottom:12 }} />
             <p style={{ fontSize:15, fontWeight:700, margin:'0 0 6px' }}>Sin citas para este día</p>
-            <p style={{ fontSize:13, color:'var(--text-secondary)', margin:'0 0 16px' }}>Agrega la primera cita del día</p>
-            <button className="btn btn-primary" onClick={() => setShowModal(true)}>+ Nueva cita</button>
+            <button className="btn btn-primary" onClick={() => { setForm(emptyForm); setShowModal(true) }}>+ Nueva cita</button>
           </div>
         ) : (
           <table className="table">
             <thead>
               <tr>
                 <th>Hora</th>
-                <th>Mascota / Dueño</th>
+                <th>Mascota</th>
+                <th>Dueño</th>
                 <th>Notas</th>
                 <th>Precio</th>
                 <th>Estado</th>
@@ -103,18 +130,21 @@ export default function Appointments({ clinic }) {
                   <td>
                     <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                       <div style={{ width:32, height:32, borderRadius:8, background:'var(--purple-light)', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                        {appt.pets?.photo_url ? <img src={appt.pets.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <i className="ti ti-paw" style={{ color:'var(--purple)', fontSize:14 }} />}
+                        {appt.pets?.photo_url
+                          ? <img src={appt.pets.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                          : <i className="ti ti-paw" style={{ color:'var(--purple)', fontSize:14 }} />}
                       </div>
-                      <span style={{ fontWeight:600 }}>{appt.pets?.name || appt.notes?.split(' ')[0] || 'Mascota'}</span>
+                      <span style={{ fontWeight:600 }}>{appt.pets?.name || appt.pet_name || '—'}</span>
                     </div>
                   </td>
+                  <td style={{ fontSize:13, color:'var(--text-secondary)' }}>{appt.owner_name || '—'}</td>
                   <td style={{ color:'var(--text-secondary)', fontSize:13 }}>{appt.notes || '—'}</td>
                   <td style={{ fontWeight:700 }}>{appt.price ? `$${appt.price}` : '—'}</td>
                   <td><span className={`badge ${STATUS_COLORS[appt.status]}`}>{STATUS_LABELS[appt.status]}</span></td>
                   <td>
                     <div style={{ display:'flex', gap:6 }}>
-                      {appt.status === 'pending' && <button className="btn btn-secondary btn-sm" onClick={() => updateStatus(appt.id,'confirmed')}>Confirmar</button>}
-                      {appt.status === 'confirmed' && <button className="btn btn-primary btn-sm" onClick={() => updateStatus(appt.id,'completed')}>Completar</button>}
+                      {appt.status === 'pending'   && <button className="btn btn-secondary btn-sm" onClick={() => updateStatus(appt.id,'confirmed')}>Confirmar</button>}
+                      {appt.status === 'confirmed' && <button className="btn btn-primary btn-sm"   onClick={() => updateStatus(appt.id,'completed')}>Completar</button>}
                       {appt.status !== 'cancelled' && appt.status !== 'completed' && (
                         <button className="btn btn-danger btn-sm" onClick={() => updateStatus(appt.id,'cancelled')}>Cancelar</button>
                       )}
@@ -136,6 +166,43 @@ export default function Appointments({ clinic }) {
               <button className="btn btn-icon" onClick={() => setShowModal(false)} style={{ background:'var(--bg)' }}><i className="ti ti-x" /></button>
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+
+              {/* Código Lumi opcional */}
+              <div>
+                <label className="label">Código Lumi (opcional)</label>
+                <div style={{ display:'flex', gap:8 }}>
+                  <input className="input" value={form.lumi_code}
+                    onChange={e => { const v = e.target.value.toUpperCase(); setForm(f=>({...f, lumi_code:v})); searchLumi(v) }}
+                    placeholder="LMI-2026-XXXXXX" style={{ flex:1, fontFamily:'monospace' }} />
+                  {lumiLoading && <span style={{ alignSelf:'center', fontSize:12, color:'var(--text-muted)' }}>Buscando...</span>}
+                </div>
+                {form.pet_id && (
+                  <p style={{ fontSize:12, color:'#16A34A', fontWeight:600, margin:'4px 0 0' }}>
+                    ✓ Mascota Lumi encontrada
+                  </p>
+                )}
+              </div>
+
+              {/* Nombre mascota y dueño — obligatorios */}
+              <div className="grid-2">
+                <div>
+                  <label className="label">Nombre mascota *</label>
+                  <input className="input" value={form.pet_name}
+                    onChange={e => setForm(f=>({...f, pet_name:e.target.value}))}
+                    placeholder="Max" style={{ borderColor: !form.pet_name.trim() ? '#FCA5A5' : undefined }} />
+                </div>
+                <div>
+                  <label className="label">Nombre dueño *</label>
+                  <input className="input" value={form.owner_name}
+                    onChange={e => setForm(f=>({...f, owner_name:e.target.value}))}
+                    placeholder="Juan García" style={{ borderColor: !form.owner_name.trim() ? '#FCA5A5' : undefined }} />
+                </div>
+              </div>
+
+              {!canSave && (
+                <p style={{ fontSize:12, color:'#DC2626', margin:0 }}>* Nombre de mascota y dueño son obligatorios</p>
+              )}
+
               <div className="grid-2">
                 <div>
                   <label className="label">Hora *</label>
@@ -151,6 +218,7 @@ export default function Appointments({ clinic }) {
                   </select>
                 </div>
               </div>
+
               <div>
                 <label className="label">Notas / Motivo</label>
                 <input className="input" value={form.notes} onChange={e => setForm(f=>({...f,notes:e.target.value}))} placeholder="Consulta general, vacunación..." />
@@ -159,9 +227,12 @@ export default function Appointments({ clinic }) {
                 <label className="label">Precio (opcional)</label>
                 <input className="input" type="number" value={form.price} onChange={e => setForm(f=>({...f,price:e.target.value}))} placeholder="350" />
               </div>
+
               <div style={{ display:'flex', gap:10 }}>
                 <button className="btn btn-secondary" onClick={() => setShowModal(false)} style={{ flex:1, justifyContent:'center' }}>Cancelar</button>
-                <button className="btn btn-primary" onClick={saveAppointment} style={{ flex:2, justifyContent:'center' }}>Guardar cita</button>
+                <button className="btn btn-primary" onClick={saveAppointment} disabled={!canSave} style={{ flex:2, justifyContent:'center', opacity: canSave ? 1 : 0.5 }}>
+                  Guardar cita
+                </button>
               </div>
             </div>
           </div>
