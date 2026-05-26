@@ -23,11 +23,11 @@ const NAV = [
 ]
 
 export default function App() {
-  const [session, setSession]     = useState(null)
-  const [clinic, setClinic]       = useState(null)
-  const [page, setPage]           = useState('dashboard')
+  const [session, setSession]       = useState(null)
+  const [clinic, setClinic]         = useState(null)
+  const [page, setPage]             = useState('dashboard')
   const [pageParams, setPageParams] = useState(null)
-  const [loading, setLoading]     = useState(true)
+  const [loading, setLoading]       = useState(true)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -68,15 +68,25 @@ export default function App() {
 
   const renderPage = () => {
     switch(page) {
-      case 'dashboard':    return <Dashboard    clinic={clinic} session={session} onNavigate={navigate} />
-      case 'appointments': return <Appointments clinic={clinic} session={session} />
-      case 'patients':     return <Patients     clinic={clinic} session={session} openNew={pageParams === 'new'} />
-      case 'services':     return <Services     clinic={clinic} session={session} />
-      case 'inventory':    return <Inventory    clinic={clinic} session={session} />
-      case 'finance':      return <Finance      clinic={clinic} session={session} />
-      case 'chat':         return <ChatVet      clinic={clinic} session={session} />
-      case 'settings':     return <Settings     clinic={clinic} session={session} onUpdate={setClinic} />
-      default:             return <Dashboard    clinic={clinic} session={session} onNavigate={navigate} />
+      case 'dashboard':
+        return <Dashboard clinic={clinic} session={session} onNavigate={navigate} />
+      case 'appointments':
+        return <Appointments clinic={clinic} session={session} initialForm={pageParams?.appointmentForm || null} />
+      case 'patients':
+        return (
+          <Patients
+            clinic={clinic}
+            session={session}
+            openNew={pageParams === 'new'}
+            onNavigateAppointment={(form) => navigate('appointments', { appointmentForm: form })}
+          />
+        )
+      case 'services':  return <Services  clinic={clinic} session={session} />
+      case 'inventory': return <Inventory clinic={clinic} session={session} />
+      case 'finance':   return <Finance   clinic={clinic} session={session} />
+      case 'chat':      return <ChatVet   clinic={clinic} session={session} />
+      case 'settings':  return <Settings  clinic={clinic} session={session} onUpdate={setClinic} />
+      default:          return <Dashboard clinic={clinic} session={session} onNavigate={navigate} />
     }
   }
 
