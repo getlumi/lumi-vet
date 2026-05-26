@@ -44,7 +44,7 @@ export default function Patients({ clinic, openNew }) {
   const [recordForm, setRecordForm]         = useState({ diagnosis:'', treatment:'', notes:'', weight:'', temperature:'', next_visit:'' })
 
   // Cita inline
-  const [apptForm, setApptForm]             = useState({ date: new Date().toISOString().slice(0,10), time:'09:00', notes:'', status:'confirmed', price:'' })
+  const [apptForm, setApptForm]             = useState({ date: new Date().toISOString().slice(0,10), time:'09:00', notes:'', status:'confirmed', price:'', lumi_code:'' })
 
   // Nuevo paciente regular
   const [newForm, setNewForm]               = useState({ owner_name:'', owner_phone:'', owner_email:'', pet_name:'', pet_type:'perro', breed:'', weight:'', gender:'macho', notes:'' })
@@ -361,7 +361,7 @@ export default function Patients({ clinic, openNew }) {
           <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap' }}>
             <button className="btn btn-primary btn-sm" onClick={() => { setShowVisit(true); setVisitType('servicio'); setCartItems([]); setServiceDesc(''); setServicePrice('') }}><i className="ti ti-plus" /> + Visita</button>
             <button className="btn btn-secondary btn-sm" onClick={() => setShowRecord(true)}><i className="ti ti-file-plus" /> Consulta</button>
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowAppt(true)}><i className="ti ti-calendar-plus" /> Agendar cita</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => { setShowAppt(true); setApptForm(f => ({...f, lumi_code: selectedType==="lumi" ? (selected.pets?.lumi_id||"") : "" })) }}><i className="ti ti-calendar-plus" /> Agendar cita</button>
             {selectedType === 'lumi' && (
               <button className="btn btn-secondary btn-sm" style={{ color:'var(--purple)', borderColor:'var(--purple)' }} onClick={() => { setShowCarnet(true); setCarnetStep('code'); setCarnetCode(''); setCarnetError('') }}>
                 <i className="ti ti-certificate" /> Actualizar carnet
@@ -514,6 +514,12 @@ export default function Patients({ clinic, openNew }) {
             <p style={{ fontSize:17, fontWeight:800, margin:'0 0 6px' }}>📅 Agendar cita</p>
             <p style={{ fontSize:13, color:'var(--text-secondary)', margin:'0 0 20px' }}>{petName} · {ownerName}</p>
             <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+              {selectedType === 'lumi' && (
+                <div>
+                  <label className="label">Código Lumi</label>
+                  <input className="input" value={apptForm.lumi_code} readOnly style={{ fontFamily:'monospace', letterSpacing:'1px', background:'#F5F3FF', color:'#6B21A8', fontWeight:600 }} />
+                </div>
+              )}
               <div className="grid-2">
                 <div><label className="label">Fecha *</label><input className="input" type="date" value={apptForm.date} onChange={e => setApptForm(f=>({...f,date:e.target.value}))} /></div>
                 <div>
