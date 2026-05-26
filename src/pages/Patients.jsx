@@ -33,7 +33,7 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
   const fetchAll = async () => {
     const { data: lumi, error: lumiErr } = await supabase
       .from('vet_patients')
-      .select('*, pets(id,name,breed,photo_url,birthdate,gender,lumi_id,species), profiles(id,name,phone,email)')
+      .select('*, pets(id,name,breed,photo_url,birthdate,gender,lumi_id,pet_type,description), profiles(id,name,phone,email)')
       .eq('clinic_id', clinic.id)
     if (lumiErr) console.error('lumi error:', lumiErr.message)
     setLumiPatients(lumi || [])
@@ -252,7 +252,7 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
                                          : <span style={{ fontSize:11, background:'#F1F5F9', color:'#64748B', borderRadius:6, padding:'2px 8px', fontWeight:700 }}>REGULAR</span>}
                 </div>
                 <p style={{ fontSize:13, color:'var(--text-secondary)', margin:0 }}>
-                  {selectedType==='lumi' ? `${selected.pets?.species} · ${selected.pets?.breed} · ${selected.pets?.gender} · ${calcAge(selected.pets?.birthdate)}` : `${selected.species} · ${selected.breed} · ${selected.gender}`}
+                  {selectedType==='lumi' ? `${selected.pets?.pet_type} · ${selected.pets?.breed} · ${selected.pets?.gender} · ${calcAge(selected.pets?.birthdate)}` : `${selected.species} · ${selected.breed} · ${selected.gender}`}
                 </p>
               </div>
             </div>
@@ -468,7 +468,7 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
                       </div>
                       <div>
                         <p style={{ fontSize:16, fontWeight:800, margin:'0 0 2px' }}>{lumiSearch.pet.name}</p>
-                        <p style={{ fontSize:12, color:'var(--text-secondary)', margin:0 }}>{lumiSearch.pet.species} · {lumiSearch.pet.breed} · {lumiSearch.pet.gender}</p>
+                        <p style={{ fontSize:12, color:'var(--text-secondary)', margin:0 }}>{lumiSearch.pet.pet_type} · {lumiSearch.pet.breed} · {lumiSearch.pet.gender}</p>
                         <p style={{ fontSize:12, color:'var(--purple)', fontWeight:600, margin:'2px 0 0' }}>Dueño: {lumiSearch.pet.profiles?.name}</p>
                       </div>
                     </div>
