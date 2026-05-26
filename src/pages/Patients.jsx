@@ -137,13 +137,15 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
 
     if (existing) { setLumiError('Esta mascota ya está registrada en tu clínica'); return }
 
-    await supabase.from('vet_patients').insert({
+    const { error } = await supabase.from('vet_patients').insert({
       clinic_id: clinic.id,
       pet_id:    pet.id,
       owner_id:  pet.profiles?.id,
     })
 
-    setShowNew(false); setLumiCode(''); setLumiSearch(null)
+    if (error) { setLumiError(`Error: ${error.message}`); return }
+
+    setShowNew(false); setLumiCode(''); setLumiSearch(null); setLumiError('')
     fetchAll()
   }
 
@@ -280,151 +282,86 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
     return y > 0 ? `${y} años` : 'Cachorro'
   }
 
-  const filteredLumi = lumiPatients.filter(p =>
-    p.pets?.name?.toLowerCase().includes(search.toLowerCase()) ||
-    p.profiles?.name?.toLowerCase().includes(search.toLowerCase())
-  )
-  const filteredRegular = regularPatients.filter(p =>
-    p.pet_name?.toLowerCase().includes(search.toLowerCase()) ||
-    p.owner_name?.toLowerCase().includes(search.toLowerCase())
-  )
+  // Lista unificada
+  const allPatients = [
+    ...lumiPatients.map(p => ({ ...p, _type:'lumi',    _name: p.pets?.name, _owner: p.profiles?.name })),
+    ...regularPatients.map(p => ({ ...p, _type:'regular', _name: p.pet_name,   _owner: p.owner_name })),
+  ].sort((a,b) => (b.last_visit||'2000-01-01').localeCompare(a.last_visit||'2000-01-01'))
 
-  const petName    = selectedType === 'lumi' ? selected?.pets?.name    : selected?.pet_name
-  const ownerName  = selectedType === 'lumi' ? selected?.profiles?.name : selected?.owner_name
+  const filteredAll = allPatients.filter(p => {
+    const matchSearch = p._name?.toLowerCase().includes(search.toLowerCase()) || p._owner?.toLowerCase().includes(search.toLowerCase())
+    if (tab === 'todos') return matchSearch
+    return matchSearch && p._type === (tab === 'lumi' ? 'lumi' : 'regular')
+  })
+
+  const petName    = selectedType === 'lumi' ? selected?.pets?.name     : selected?.pet_name
+  const ownerName  = selectedType === 'lumi' ? selected?.profiles?.name  : selected?.owner_name
   const ownerPhone = selectedType === 'lumi' ? selected?.profiles?.phone : selected?.owner_phone
   const ownerEmail = selectedType === 'lumi' ? selected?.profiles?.email : selected?.owner_email
 
   return (
     <div style={{ display:'grid', gridTemplateColumns: selected ? '340px 1fr' : '1fr', gap:20 }}>
-
-      {/* ===== LISTA ===== */}
       <div>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
-          <p style={{ fontSize:20, fontWeight:800, margin:0 }}>Pacientes</p>
-          <button className="btn btn-primary" onClick={() => setShowNew(true)}>
-            <i className="ti ti-plus" /> Nuevo paciente
-          </button>
+          <p style={{ fontSize:20, fontWeight:800, margin:0 }}>Pacientes <span style={{ fontSize:14, color:'var(--text-muted)', fontWeight:500 }}>({allPatients.length})</span></p>
+          <button className="btn btn-primary" onClick={() => setShowNew(true)}><i className="ti ti-plus" /> Nuevo paciente</button>
         </div>
 
         {pointsMsg && (
-          <div style={{ background:'#DCFCE7', border:'1px solid #16A34A', borderRadius:10, padding:'10px 14px', marginBottom:12, fontSize:13, color:'#15803D', fontWeight:600 }}>
-            {pointsMsg}
-          </div>
+          <div style={{ background:'#DCFCE7', border:'1px solid #16A34A', borderRadius:10, padding:'10px 14px', marginBottom:12, fontSize:13, color:'#15803D', fontWeight:600 }}>{pointsMsg}</div>
         )}
 
-        {/* Tabs */}
         <div style={{ display:'flex', marginBottom:14, border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
-          <button onClick={() => { setTab('lumi'); setSelected(null) }} style={{ flex:1, padding:'9px 0', fontSize:13, fontWeight:700, border:'none', cursor:'pointer', background: tab==='lumi' ? '#6B21A8' : 'white', color: tab==='lumi' ? 'white' : 'var(--text-secondary)' }}>
-            🐾 Lumi ({lumiPatients.length})
-          </button>
-          <button onClick={() => { setTab('regular'); setSelected(null) }} style={{ flex:1, padding:'9px 0', fontSize:13, fontWeight:700, border:'none', cursor:'pointer', background: tab==='regular' ? '#6B21A8' : 'white', color: tab==='regular' ? 'white' : 'var(--text-secondary)' }}>
-            👤 Regulares ({regularPatients.length})
-          </button>
+          {[
+            { key:'todos',   label:`Todos (${allPatients.length})` },
+            { key:'lumi',    label:`🐾 Lumi (${lumiPatients.length})` },
+            { key:'regular', label:`👤 Regular (${regularPatients.length})` },
+          ].map(t => (
+            <button key={t.key} onClick={() => { setTab(t.key); setSelected(null) }}
+              style={{ flex:1, padding:'9px 0', fontSize:12, fontWeight:700, border:'none', cursor:'pointer',
+                background: tab===t.key ? '#6B21A8' : 'white', color: tab===t.key ? 'white' : 'var(--text-secondary)' }}>
+              {t.label}
+            </button>
+          ))}
         </div>
 
         <input className="input" style={{ marginBottom:12 }} value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Buscar mascota o dueño..." />
 
-        {/* Lista Lumi */}
-        {tab === 'lumi' && (
-          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-            {filteredLumi.map(p => (
-              <div key={p.id} onClick={() => selectLumi(p)}
-                style={{ padding:'12px 14px', background:'white', borderRadius:12, border:`1.5px solid ${selected?.id===p.id && selectedType==='lumi' ? 'var(--purple)' : 'var(--border)'}`, cursor:'pointer', display:'flex', alignItems:'center', gap:10, boxShadow:'var(--shadow)' }}>
-                <div style={{ width:44, height:44, borderRadius:12, background:'var(--purple-light)', overflow:'hidden', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                  {p.pets?.photo_url ? <img src={p.pets.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <i className="ti ti-paw" style={{ color:'var(--purple)', fontSize:20 }} />}
+        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+          {filteredAll.map(p => {
+            const isL = p._type === 'lumi'
+            const isSelected = selected?.id === p.id && selectedType === p._type
+            return (
+              <div key={`${p._type}-${p.id}`} onClick={() => isL ? selectLumi(p) : selectRegular(p)}
+                style={{ padding:'12px 14px', background:'white', borderRadius:12, border:`1.5px solid ${isSelected ? 'var(--purple)' : 'var(--border)'}`, cursor:'pointer', display:'flex', alignItems:'center', gap:10, boxShadow:'var(--shadow)' }}>
+                <div style={{ width:44, height:44, borderRadius:12, background: isL ? 'var(--purple-light)' : '#F1F5F9', overflow:'hidden', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  {isL && p.pets?.photo_url ? <img src={p.pets.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <i className="ti ti-paw" style={{ color: isL ? 'var(--purple)' : '#64748B', fontSize:20 }} />}
                 </div>
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:2 }}>
-                    <p style={{ fontSize:14, fontWeight:700, margin:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.pets?.name}</p>
-                    <span style={{ fontSize:10, background:'#EDE9FE', color:'#6B21A8', borderRadius:6, padding:'1px 6px', fontWeight:700, flexShrink:0 }}>LUMI</span>
+                    <p style={{ fontSize:14, fontWeight:700, margin:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p._name}</p>
+                    {isL ? <span style={{ fontSize:10, background:'#EDE9FE', color:'#6B21A8', borderRadius:6, padding:'1px 6px', fontWeight:700, flexShrink:0 }}>LUMI</span>
+                         : <span style={{ fontSize:10, background:'#F1F5F9', color:'#64748B', borderRadius:6, padding:'1px 6px', fontWeight:700, flexShrink:0 }}>REGULAR</span>}
                   </div>
-                  <p style={{ fontSize:11, color:'var(--text-secondary)', margin:0 }}>{p.pets?.breed} · {calcAge(p.pets?.birthdate)}</p>
-                  <p style={{ fontSize:11, color:'var(--text-muted)', margin:'2px 0 0' }}>Dueño: {p.profiles?.name || '—'}</p>
+                  <p style={{ fontSize:11, color:'var(--text-secondary)', margin:0 }}>{isL ? `${p.pets?.breed} · ${calcAge(p.pets?.birthdate)}` : `${p.species} · ${p.breed}`}</p>
+                  <p style={{ fontSize:11, color:'var(--text-muted)', margin:'2px 0 0' }}>Dueño: {p._owner || '—'}</p>
                 </div>
                 <div style={{ textAlign:'right', flexShrink:0 }}>
                   {p.last_visit && <p style={{ fontSize:10, color:'var(--text-muted)', margin:'0 0 2px' }}>{new Date(p.last_visit+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'short'})}</p>}
-                  {p.visit_count > 0 && <span style={{ fontSize:10, background:'#EDE9FE', color:'#6B21A8', borderRadius:6, padding:'1px 6px', fontWeight:700 }}>{p.visit_count} visitas</span>}
+                  {p.visit_count > 0 && <span style={{ fontSize:10, background: isL ? '#EDE9FE' : '#F1F5F9', color: isL ? '#6B21A8' : '#64748B', borderRadius:6, padding:'1px 6px', fontWeight:700 }}>{p.visit_count} visitas</span>}
                 </div>
               </div>
-            ))}
-            {filteredLumi.length === 0 && (
-              <div style={{ textAlign:'center', padding:'40px 20px', color:'var(--text-muted)' }}>
-                <i className="ti ti-paw" style={{ fontSize:36, display:'block', marginBottom:8 }} />
-                <p style={{ fontSize:13, margin:'0 0 12px' }}>Sin pacientes Lumi</p>
-                <button className="btn btn-primary" onClick={() => { setShowNew(true); setTab('lumi') }}>+ Agregar primero</button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Lista Regular */}
-        {tab === 'regular' && (
-          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-            {filteredRegular.map(p => (
-              <div key={p.id} onClick={() => selectRegular(p)}
-                style={{ padding:'12px 14px', background:'white', borderRadius:12, border:`1.5px solid ${selected?.id===p.id && selectedType==='regular' ? 'var(--purple)' : 'var(--border)'}`, cursor:'pointer', display:'flex', alignItems:'center', gap:10, boxShadow:'var(--shadow)' }}>
-                <div style={{ width:44, height:44, borderRadius:12, background:'#F1F5F9', overflow:'hidden', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                  <i className="ti ti-paw" style={{ color:'#64748B', fontSize:20 }} />
-                </div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:2 }}>
-                    <p style={{ fontSize:14, fontWeight:700, margin:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.pet_name}</p>
-                    <span style={{ fontSize:10, background:'#F1F5F9', color:'#64748B', borderRadius:6, padding:'1px 6px', fontWeight:700, flexShrink:0 }}>REGULAR</span>
-                  </div>
-                  <p style={{ fontSize:11, color:'var(--text-secondary)', margin:0 }}>{p.species} · {p.breed}</p>
-                  <p style={{ fontSize:11, color:'var(--text-muted)', margin:'2px 0 0' }}>Dueño: {p.owner_name}</p>
-                </div>
-                <div style={{ textAlign:'right', flexShrink:0 }}>
-                  {p.last_visit && <p style={{ fontSize:10, color:'var(--text-muted)', margin:'0 0 2px' }}>{new Date(p.last_visit+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'short'})}</p>}
-                  {p.visit_count > 0 && <span style={{ fontSize:10, background:'#F1F5F9', color:'#64748B', borderRadius:6, padding:'1px 6px', fontWeight:700 }}>{p.visit_count} visitas</span>}
-                </div>
-              </div>
-            ))}
-            {filteredRegular.length === 0 && (
-              <div style={{ textAlign:'center', padding:'40px 20px', color:'var(--text-muted)' }}>
-                <i className="ti ti-paw" style={{ fontSize:36, display:'block', marginBottom:8 }} />
-                <p style={{ fontSize:13, margin:'0 0 12px' }}>Sin pacientes regulares</p>
-                <button className="btn btn-primary" onClick={() => { setShowNew(true); setTab('regular') }}>+ Agregar primero</button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* ===== EXPEDIENTE ===== */}
-      {selected && (
-        <div>
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
-            <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-              <div style={{ width:56, height:56, borderRadius:14, overflow:'hidden', background: selectedType==='lumi' ? 'var(--purple-light)' : '#F1F5F9', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                {selectedType==='lumi' && selected.pets?.photo_url
-                  ? <img src={selected.pets.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
-                  : <i className="ti ti-paw" style={{ fontSize:24, color: selectedType==='lumi' ? 'var(--purple)' : '#64748B' }} />}
-              </div>
-              <div>
-                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                  <p style={{ fontSize:18, fontWeight:800, margin:'0 0 2px' }}>{petName}</p>
-                  {selectedType === 'lumi'
-                    ? <span style={{ fontSize:11, background:'#EDE9FE', color:'#6B21A8', borderRadius:6, padding:'2px 8px', fontWeight:700 }}>🐾 LUMI</span>
-                    : <span style={{ fontSize:11, background:'#F1F5F9', color:'#64748B', borderRadius:6, padding:'2px 8px', fontWeight:700 }}>REGULAR</span>}
-                </div>
-                <p style={{ fontSize:13, color:'var(--text-secondary)', margin:0 }}>
-                  {selectedType==='lumi'
-                    ? `${selected.pets?.species} · ${selected.pets?.breed} · ${selected.pets?.gender} · ${calcAge(selected.pets?.birthdate)}`
-                    : `${selected.species} · ${selected.breed} · ${selected.gender}`}
-                </p>
-              </div>
+            )
+          })}
+          {filteredAll.length === 0 && (
+            <div style={{ textAlign:'center', padding:'40px 20px', color:'var(--text-muted)' }}>
+              <i className="ti ti-paw" style={{ fontSize:36, display:'block', marginBottom:8 }} />
+              <p style={{ fontSize:13, margin:'0 0 12px' }}>Sin pacientes</p>
+              <button className="btn btn-primary" onClick={() => setShowNew(true)}>+ Agregar primero</button>
             </div>
-            <button className="btn btn-icon" style={{ background:'var(--bg)' }} onClick={() => setSelected(null)}><i className="ti ti-x" /></button>
-          </div>
-
-          {/* Botones acción */}
-          <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap' }}>
-            <button className="btn btn-primary btn-sm" onClick={() => setShowVisit(true)}>
-              <i className="ti ti-plus" /> + Visita
-            </button>
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowRecord(true)}>
-              <i className="ti ti-file-plus" /> Nueva consulta
+          )}
+        </div>
+      </div>
             </button>
             <button className="btn btn-secondary btn-sm" onClick={() => onNavigateAppointment && onNavigateAppointment({ pet_name: petName, owner_name: ownerName || '' })}>
               <i className="ti ti-calendar-plus" /> Agendar cita
