@@ -2,87 +2,124 @@ import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
 export default function Patients({ clinic, openNew, onNavigateAppointment }) {
-  const [tab, setTab]               = useState('lumi')
-  const [patients, setPatients]     = useState([])
-  const [search, setSearch]         = useState('')
-  const [selected, setSelected]     = useState(null)
-  const [records, setRecords]       = useState([])
-  const [vaccines, setVaccines]     = useState([])
-  const [visits, setVisits]         = useState([])
-  const [showRecord, setShowRecord] = useState(false)
-  const [showNew, setShowNew]       = useState(openNew || false)
-  const [showVisit, setShowVisit]   = useState(false)
-  const [showCarnet, setShowCarnet] = useState(false)
-  const [pointsMsg, setPointsMsg]   = useState(null)
+  const [tab, setTab]                 = useState('lumi')
+  const [lumiPatients, setLumiPatients]       = useState([])
+  const [regularPatients, setRegularPatients] = useState([])
+  const [search, setSearch]           = useState('')
+  const [selected, setSelected]       = useState(null)
+  const [selectedType, setSelectedType] = useState(null) // 'lumi' | 'regular'
+  const [records, setRecords]         = useState([])
+  const [vaccines, setVaccines]       = useState([])
+  const [showRecord, setShowRecord]   = useState(false)
+  const [showNew, setShowNew]         = useState(openNew || false)
+  const [showVisit, setShowVisit]     = useState(false)
+  const [showCarnet, setShowCarnet]   = useState(false)
+  const [pointsMsg, setPointsMsg]     = useState(null)
+  const [saving, setSaving]           = useState(false)
 
-  // Lumi search
-  const [lumiCode, setLumiCode]     = useState('')
-  const [lumiSearch, setLumiSearch] = useState(null)
+  // Lumi search (para nuevo paciente)
+  const [lumiCode, setLumiCode]       = useState('')
+  const [lumiSearch, setLumiSearch]   = useState(null)
   const [lumiLoading, setLumiLoading] = useState(false)
-  const [lumiError, setLumiError]   = useState('')
+  const [lumiError, setLumiError]     = useState('')
 
-  // Carnet update
-  const [carnetCode, setCarnetCode] = useState('')
+  // Carnet
+  const [carnetCode, setCarnetCode]   = useState('')
   const [carnetError, setCarnetError] = useState('')
-  const [carnetStep, setCarnetStep] = useState('code') // 'code' | 'form'
+  const [carnetStep, setCarnetStep]   = useState('code')
   const [vaccineForm, setVaccineForm] = useState({ name:'', date:'', next_date:'', notes:'' })
 
-  // Visit form
-  const [visitForm, setVisitForm] = useState({ type:'servicio', description:'', price:'' })
+  // Visit
+  const [visitForm, setVisitForm]     = useState({ type:'servicio', description:'', price:'' })
 
-  // Record form
-  const [recordForm, setRecordForm] = useState({
-    diagnosis:'', treatment:'', notes:'', weight:'', temperature:'', next_visit:''
-  })
+  // Record (consulta)
+  const [recordForm, setRecordForm]   = useState({ diagnosis:'', treatment:'', notes:'', weight:'', temperature:'', next_visit:'' })
 
-  // New patient form
+  // New regular patient
   const [newForm, setNewForm] = useState({
     owner_name:'', owner_phone:'', owner_email:'',
     pet_name:'', species:'perro', breed:'', weight:'', gender:'macho', notes:''
   })
 
-  useEffect(() => { fetchPatients() }, [])
+  useEffect(() => { fetchAll() }, [])
 
-  const fetchPatients = async () => {
-    const { data } = await supabase
+  const fetchAll = async () => {
+    // Pacientes Lumi
+    const { data: lumi } = await supabase
       .from('vet_patients')
-      .select('*, pets(id,name,breed,photo_url,birthdate,gender,lumi_id,species,description), profiles(id,name,phone,email,lumi_id)')
+      .select('*, pets(id,name,breed,photo_url,birthdate,gender,lumi_id,species), profiles(id,name,phone,email)')
       .eq('clinic_id', clinic.id)
       .order('last_visit', { ascending: false })
-    setPatients(data || [])
+    setLumiPatients(lumi || [])
+
+    // Pacientes regulares
+    const { data: regular } = await supabase
+      .from('vet_regular_patients')
+      .select('*')
+      .eq('clinic_id', clinic.id)
+      .order('last_visit', { ascending: false })
+    setRegularPatients(regular || [])
   }
 
-  const fetchRecords = async (petId) => {
-    const [recRes, vacRes, visRes] = await Promise.all([
+  const fetchLumiRecords = async (petId) => {
+    const [recRes, vacRes] = await Promise.all([
       supabase.from('vet_records').select('*').eq('clinic_id', clinic.id).eq('pet_id', petId).order('date', { ascending: false }),
       supabase.from('vaccines').select('*').eq('pet_id', petId).order('date', { ascending: false }),
-      supabase.from('vet_visit_points').select('*').eq('clinic_id', clinic.id).eq('pet_id', petId).order('created_at', { ascending: false }),
     ])
     setRecords(recRes.data || [])
     setVaccines(vacRes.data || [])
-    setVisits(visRes.data || [])
   }
 
-  const selectPatient = async (p) => {
+  const fetchRegularRecords = async (patientId) => {
+    const { data } = await supabase
+      .from('vet_regular_records')
+      .select('*')
+      .eq('regular_patient_id', patientId)
+      .order('date', { ascending: false })
+    setRecords(data || [])
+    setVaccines([])
+  }
+
+  const selectLumi = async (p) => {
     setSelected(p)
-    await fetchRecords(p.pet_id)
+    setSelectedType('lumi')
+    await fetchLumiRecords(p.pet_id)
   }
 
-  // Buscar paciente Lumi por código
+  const selectRegular = async (p) => {
+    setSelected(p)
+    setSelectedType('regular')
+    await fetchRegularRecords(p.id)
+  }
+
+  // ── Buscar Lumi por código ──
   const searchLumiCode = async () => {
     if (!lumiCode.trim()) return
     setLumiLoading(true)
     setLumiError('')
     setLumiSearch(null)
+
     const { data: pet } = await supabase
       .from('pets')
-      .select('*, profiles(id,name,phone,email,lumi_id)')
+      .select('*, profiles(id,name,phone,email)')
       .eq('lumi_id', lumiCode.trim().toUpperCase())
       .single()
-    if (!pet) { setLumiError('No se encontró ninguna mascota con ese código'); setLumiLoading(false); return }
+
+    if (!pet) {
+      setLumiError('No se encontró ninguna mascota con ese código')
+      setLumiLoading(false)
+      return
+    }
+
     const { data: lastVisit } = await supabase
-      .from('vet_records').select('*').eq('clinic_id', clinic.id).eq('pet_id', pet.id)
-      .order('date', { ascending: false }).limit(1).single()
+      .from('vet_records')
+      .select('*')
+      .eq('clinic_id', clinic.id)
+      .eq('pet_id', pet.id)
+      .order('date', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
     setLumiSearch({ pet, lastVisit })
     setLumiLoading(false)
   }
@@ -90,61 +127,134 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
   const registerLumiPatient = async () => {
     if (!lumiSearch) return
     const { pet } = lumiSearch
-    const { data: existing } = await supabase.from('vet_patients').select('id').eq('clinic_id', clinic.id).eq('pet_id', pet.id).single()
+
+    const { data: existing } = await supabase
+      .from('vet_patients')
+      .select('id')
+      .eq('clinic_id', clinic.id)
+      .eq('pet_id', pet.id)
+      .maybeSingle()
+
     if (existing) { setLumiError('Esta mascota ya está registrada en tu clínica'); return }
-    await supabase.from('vet_patients').insert({ clinic_id: clinic.id, pet_id: pet.id, owner_id: pet.profiles?.id })
+
+    await supabase.from('vet_patients').insert({
+      clinic_id: clinic.id,
+      pet_id:    pet.id,
+      owner_id:  pet.profiles?.id,
+    })
+
     setShowNew(false); setLumiCode(''); setLumiSearch(null)
-    fetchPatients()
+    fetchAll()
   }
 
-  // Guardar consulta
-  const saveRecord = async () => {
+  // ── Guardar paciente regular ──
+  const saveNewPatient = async () => {
+    if (!newForm.owner_name.trim() || !newForm.pet_name.trim()) return
+    setSaving(true)
+
+    const { error } = await supabase.from('vet_regular_patients').insert({
+      clinic_id:   clinic.id,
+      owner_name:  newForm.owner_name.trim(),
+      owner_phone: newForm.owner_phone.trim(),
+      owner_email: newForm.owner_email.trim(),
+      pet_name:    newForm.pet_name.trim(),
+      species:     newForm.species,
+      breed:       newForm.breed.trim(),
+      gender:      newForm.gender,
+      weight:      newForm.weight ? parseFloat(newForm.weight) : null,
+      notes:       newForm.notes.trim(),
+    })
+
+    setSaving(false)
+    if (!error) {
+      setShowNew(false)
+      setNewForm({ owner_name:'', owner_phone:'', owner_email:'', pet_name:'', species:'perro', breed:'', weight:'', gender:'macho', notes:'' })
+      fetchAll()
+    }
+  }
+
+  // ── Guardar consulta Lumi ──
+  const saveLumiRecord = async () => {
     const { data: record } = await supabase.from('vet_records').insert({
-      clinic_id: clinic.id, pet_id: selected.pet_id,
-      date: new Date().toISOString().slice(0, 10),
+      clinic_id: clinic.id,
+      pet_id:    selected.pet_id,
+      date:      new Date().toISOString().slice(0,10),
       ...recordForm,
-      weight: recordForm.weight ? parseFloat(recordForm.weight) : null,
+      weight:      recordForm.weight      ? parseFloat(recordForm.weight)      : null,
       temperature: recordForm.temperature ? parseFloat(recordForm.temperature) : null,
     }).select().single()
-    await supabase.from('vet_patients').update({ last_visit: new Date().toISOString().slice(0, 10) }).eq('id', selected.id)
+
+    await supabase.from('vet_patients').update({ last_visit: new Date().toISOString().slice(0,10) }).eq('id', selected.id)
+
     if (record && selected.pets?.lumi_id && selected.owner_id) {
       await supabase.rpc('grant_visit_points', {
-        p_clinic_id: clinic.id, p_owner_id: selected.owner_id,
-        p_pet_id: selected.pet_id, p_record_id: record.id,
+        p_clinic_id: clinic.id,
+        p_owner_id:  selected.owner_id,
+        p_pet_id:    selected.pet_id,
+        p_record_id: record.id,
       })
       setPointsMsg(`+15 puntos otorgados a ${selected.profiles?.name || 'el dueño'} 🎉`)
       setTimeout(() => setPointsMsg(null), 4000)
     }
-    await fetchRecords(selected.pet_id)
+
+    await fetchLumiRecords(selected.pet_id)
     setShowRecord(false)
     setRecordForm({ diagnosis:'', treatment:'', notes:'', weight:'', temperature:'', next_visit:'' })
   }
 
-  // Guardar visita (servicio o producto)
-  const saveVisit = async () => {
-    await supabase.from('vet_transactions').insert({
-      clinic_id:   clinic.id,
-      pet_id:      selected.pet_id,
-      owner_id:    selected.owner_id,
-      type:        'income',
-      category:    visitForm.type,
-      description: visitForm.description,
-      amount:      visitForm.price ? parseFloat(visitForm.price) : 0,
-      date:        new Date().toISOString().slice(0, 10),
+  // ── Guardar consulta Regular ──
+  const saveRegularRecord = async () => {
+    await supabase.from('vet_regular_records').insert({
+      clinic_id:          clinic.id,
+      regular_patient_id: selected.id,
+      date:               new Date().toISOString().slice(0,10),
+      ...recordForm,
+      weight:      recordForm.weight      ? parseFloat(recordForm.weight)      : null,
+      temperature: recordForm.temperature ? parseFloat(recordForm.temperature) : null,
     })
-    // Sumar visita al score del paciente
-    await supabase.from('vet_patients').update({
-      last_visit:   new Date().toISOString().slice(0, 10),
-      visit_count:  (selected.visit_count || 0) + 1,
-    }).eq('id', selected.id)
-
-    setShowVisit(false)
-    setVisitForm({ type:'servicio', description:'', price:'' })
-    fetchPatients()
-    fetchRecords(selected.pet_id)
+    await supabase.from('vet_regular_patients').update({ last_visit: new Date().toISOString().slice(0,10) }).eq('id', selected.id)
+    await fetchRegularRecords(selected.id)
+    setShowRecord(false)
+    setRecordForm({ diagnosis:'', treatment:'', notes:'', weight:'', temperature:'', next_visit:'' })
   }
 
-  // Verificar código de carnet
+  // ── Guardar visita ──
+  const saveVisit = async () => {
+    if (selectedType === 'lumi') {
+      await supabase.from('vet_transactions').insert({
+        clinic_id:   clinic.id,
+        pet_id:      selected.pet_id,
+        owner_id:    selected.owner_id,
+        type:        'income',
+        category:    visitForm.type,
+        description: visitForm.description,
+        amount:      visitForm.price ? parseFloat(visitForm.price) : 0,
+        date:        new Date().toISOString().slice(0,10),
+      })
+      await supabase.from('vet_patients').update({
+        last_visit:  new Date().toISOString().slice(0,10),
+        visit_count: (selected.visit_count || 0) + 1,
+      }).eq('id', selected.id)
+    } else {
+      await supabase.from('vet_regular_records').insert({
+        clinic_id:          clinic.id,
+        regular_patient_id: selected.id,
+        date:               new Date().toISOString().slice(0,10),
+        type:               visitForm.type,
+        description:        visitForm.description,
+        price:              visitForm.price ? parseFloat(visitForm.price) : 0,
+      })
+      await supabase.from('vet_regular_patients').update({
+        last_visit:  new Date().toISOString().slice(0,10),
+        visit_count: (selected.visit_count || 0) + 1,
+      }).eq('id', selected.id)
+    }
+    setShowVisit(false)
+    setVisitForm({ type:'servicio', description:'', price:'' })
+    fetchAll()
+  }
+
+  // ── Carnet ──
   const verifyCarnetCode = async () => {
     setCarnetError('')
     const { data } = await supabase
@@ -152,58 +262,37 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
       .select('*')
       .eq('pet_id', selected.pet_id)
       .eq('code', carnetCode.trim().toUpperCase())
-      .single()
+      .maybeSingle()
     if (!data) { setCarnetError('Código incorrecto. Pide al dueño el código de su app.'); return }
     setCarnetStep('form')
   }
 
-  // Guardar vacuna en carnet
   const saveVaccine = async () => {
-    await supabase.from('vaccines').insert({
-      pet_id:    selected.pet_id,
-      clinic_id: clinic.id,
-      ...vaccineForm,
-    })
-    await fetchRecords(selected.pet_id)
-    setShowCarnet(false)
-    setCarnetCode('')
-    setCarnetStep('code')
+    await supabase.from('vaccines').insert({ pet_id: selected.pet_id, clinic_id: clinic.id, ...vaccineForm })
+    await fetchLumiRecords(selected.pet_id)
+    setShowCarnet(false); setCarnetCode(''); setCarnetStep('code')
     setVaccineForm({ name:'', date:'', next_date:'', notes:'' })
   }
 
-  // Guardar nuevo paciente regular
-  const saveNewPatient = async () => {
-    const { data: profile, error: profError } = await supabase
-      .from('profiles')
-      .insert({ name: newForm.owner_name, phone: newForm.owner_phone, email: newForm.owner_email, is_regular_patient: true })
-      .select().single()
-    if (profError || !profile) return
-
-    const { data: pet, error: petError } = await supabase
-      .from('pets')
-      .insert({ name: newForm.pet_name, species: newForm.species, breed: newForm.breed, gender: newForm.gender, owner_id: profile.id, notes: newForm.notes })
-      .select().single()
-    if (petError || !pet) return
-
-    await supabase.from('vet_patients').insert({ clinic_id: clinic.id, pet_id: pet.id, owner_id: profile.id })
-    setShowNew(false)
-    setNewForm({ owner_name:'', owner_phone:'', owner_email:'', pet_name:'', species:'perro', breed:'', weight:'', gender:'macho', notes:'' })
-    fetchPatients()
-  }
-
-  const isLumi = (p) => !!p.pets?.lumi_id
   const calcAge = (bd) => {
     if (!bd) return null
     const y = Math.floor((Date.now() - new Date(bd)) / (1000*60*60*24*365.25))
     return y > 0 ? `${y} años` : 'Cachorro'
   }
-  const lumiCount    = patients.filter(p => isLumi(p)).length
-  const regularCount = patients.filter(p => !isLumi(p)).length
-  const filtered = patients.filter(p => {
-    const matchSearch = p.pets?.name?.toLowerCase().includes(search.toLowerCase()) || p.profiles?.name?.toLowerCase().includes(search.toLowerCase())
-    const matchTab = tab === 'lumi' ? isLumi(p) : !isLumi(p)
-    return matchSearch && matchTab
-  })
+
+  const filteredLumi = lumiPatients.filter(p =>
+    p.pets?.name?.toLowerCase().includes(search.toLowerCase()) ||
+    p.profiles?.name?.toLowerCase().includes(search.toLowerCase())
+  )
+  const filteredRegular = regularPatients.filter(p =>
+    p.pet_name?.toLowerCase().includes(search.toLowerCase()) ||
+    p.owner_name?.toLowerCase().includes(search.toLowerCase())
+  )
+
+  const petName    = selectedType === 'lumi' ? selected?.pets?.name    : selected?.pet_name
+  const ownerName  = selectedType === 'lumi' ? selected?.profiles?.name : selected?.owner_name
+  const ownerPhone = selectedType === 'lumi' ? selected?.profiles?.phone : selected?.owner_phone
+  const ownerEmail = selectedType === 'lumi' ? selected?.profiles?.email : selected?.owner_email
 
   return (
     <div style={{ display:'grid', gridTemplateColumns: selected ? '340px 1fr' : '1fr', gap:20 }}>
@@ -225,47 +314,81 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
 
         {/* Tabs */}
         <div style={{ display:'flex', marginBottom:14, border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
-          <button onClick={() => setTab('lumi')} style={{ flex:1, padding:'9px 0', fontSize:13, fontWeight:700, border:'none', cursor:'pointer', background: tab==='lumi' ? '#6B21A8' : 'white', color: tab==='lumi' ? 'white' : 'var(--text-secondary)' }}>
-            🐾 Lumi ({lumiCount})
+          <button onClick={() => { setTab('lumi'); setSelected(null) }} style={{ flex:1, padding:'9px 0', fontSize:13, fontWeight:700, border:'none', cursor:'pointer', background: tab==='lumi' ? '#6B21A8' : 'white', color: tab==='lumi' ? 'white' : 'var(--text-secondary)' }}>
+            🐾 Lumi ({lumiPatients.length})
           </button>
-          <button onClick={() => setTab('regular')} style={{ flex:1, padding:'9px 0', fontSize:13, fontWeight:700, border:'none', cursor:'pointer', background: tab==='regular' ? '#6B21A8' : 'white', color: tab==='regular' ? 'white' : 'var(--text-secondary)' }}>
-            👤 Regulares ({regularCount})
+          <button onClick={() => { setTab('regular'); setSelected(null) }} style={{ flex:1, padding:'9px 0', fontSize:13, fontWeight:700, border:'none', cursor:'pointer', background: tab==='regular' ? '#6B21A8' : 'white', color: tab==='regular' ? 'white' : 'var(--text-secondary)' }}>
+            👤 Regulares ({regularPatients.length})
           </button>
         </div>
 
         <input className="input" style={{ marginBottom:12 }} value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Buscar mascota o dueño..." />
 
-        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-          {filtered.map(p => (
-            <div key={p.id} onClick={() => selectPatient(p)}
-              style={{ padding:'12px 14px', background:'white', borderRadius:12, border:`1.5px solid ${selected?.id===p.id ? 'var(--purple)' : 'var(--border)'}`, cursor:'pointer', display:'flex', alignItems:'center', gap:10, boxShadow:'var(--shadow)' }}>
-              <div style={{ width:44, height:44, borderRadius:12, background:'var(--purple-light)', overflow:'hidden', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                {p.pets?.photo_url ? <img src={p.pets.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <i className="ti ti-paw" style={{ color:'var(--purple)', fontSize:20 }} />}
-              </div>
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:2 }}>
-                  <p style={{ fontSize:14, fontWeight:700, margin:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.pets?.name}</p>
-                  {isLumi(p)
-                    ? <span style={{ fontSize:10, background:'#EDE9FE', color:'#6B21A8', borderRadius:6, padding:'1px 6px', fontWeight:700, flexShrink:0 }}>LUMI</span>
-                    : <span style={{ fontSize:10, background:'#F1F5F9', color:'#64748B', borderRadius:6, padding:'1px 6px', fontWeight:700, flexShrink:0 }}>REGULAR</span>}
+        {/* Lista Lumi */}
+        {tab === 'lumi' && (
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {filteredLumi.map(p => (
+              <div key={p.id} onClick={() => selectLumi(p)}
+                style={{ padding:'12px 14px', background:'white', borderRadius:12, border:`1.5px solid ${selected?.id===p.id && selectedType==='lumi' ? 'var(--purple)' : 'var(--border)'}`, cursor:'pointer', display:'flex', alignItems:'center', gap:10, boxShadow:'var(--shadow)' }}>
+                <div style={{ width:44, height:44, borderRadius:12, background:'var(--purple-light)', overflow:'hidden', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  {p.pets?.photo_url ? <img src={p.pets.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <i className="ti ti-paw" style={{ color:'var(--purple)', fontSize:20 }} />}
                 </div>
-                <p style={{ fontSize:11, color:'var(--text-secondary)', margin:0 }}>{p.pets?.breed} · {calcAge(p.pets?.birthdate)}</p>
-                <p style={{ fontSize:11, color:'var(--text-muted)', margin:'2px 0 0' }}>Dueño: {p.profiles?.name || '—'}</p>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:2 }}>
+                    <p style={{ fontSize:14, fontWeight:700, margin:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.pets?.name}</p>
+                    <span style={{ fontSize:10, background:'#EDE9FE', color:'#6B21A8', borderRadius:6, padding:'1px 6px', fontWeight:700, flexShrink:0 }}>LUMI</span>
+                  </div>
+                  <p style={{ fontSize:11, color:'var(--text-secondary)', margin:0 }}>{p.pets?.breed} · {calcAge(p.pets?.birthdate)}</p>
+                  <p style={{ fontSize:11, color:'var(--text-muted)', margin:'2px 0 0' }}>Dueño: {p.profiles?.name || '—'}</p>
+                </div>
+                <div style={{ textAlign:'right', flexShrink:0 }}>
+                  {p.last_visit && <p style={{ fontSize:10, color:'var(--text-muted)', margin:'0 0 2px' }}>{new Date(p.last_visit+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'short'})}</p>}
+                  {p.visit_count > 0 && <span style={{ fontSize:10, background:'#EDE9FE', color:'#6B21A8', borderRadius:6, padding:'1px 6px', fontWeight:700 }}>{p.visit_count} visitas</span>}
+                </div>
               </div>
-              <div style={{ textAlign:'right', flexShrink:0 }}>
-                {p.last_visit && <p style={{ fontSize:10, color:'var(--text-muted)', margin:'0 0 2px' }}>{new Date(p.last_visit+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'short'})}</p>}
-                {p.visit_count > 0 && <span style={{ fontSize:10, background:'#EDE9FE', color:'#6B21A8', borderRadius:6, padding:'1px 6px', fontWeight:700 }}>{p.visit_count} visitas</span>}
+            ))}
+            {filteredLumi.length === 0 && (
+              <div style={{ textAlign:'center', padding:'40px 20px', color:'var(--text-muted)' }}>
+                <i className="ti ti-paw" style={{ fontSize:36, display:'block', marginBottom:8 }} />
+                <p style={{ fontSize:13, margin:'0 0 12px' }}>Sin pacientes Lumi</p>
+                <button className="btn btn-primary" onClick={() => { setShowNew(true); setTab('lumi') }}>+ Agregar primero</button>
               </div>
-            </div>
-          ))}
-          {filtered.length === 0 && (
-            <div style={{ textAlign:'center', padding:'40px 20px', color:'var(--text-muted)' }}>
-              <i className="ti ti-paw" style={{ fontSize:36, display:'block', marginBottom:8 }} />
-              <p style={{ fontSize:13, margin:'0 0 12px' }}>Sin pacientes {tab==='lumi' ? 'Lumi' : 'regulares'}</p>
-              <button className="btn btn-primary" onClick={() => setShowNew(true)}>+ Agregar primero</button>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
+
+        {/* Lista Regular */}
+        {tab === 'regular' && (
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {filteredRegular.map(p => (
+              <div key={p.id} onClick={() => selectRegular(p)}
+                style={{ padding:'12px 14px', background:'white', borderRadius:12, border:`1.5px solid ${selected?.id===p.id && selectedType==='regular' ? 'var(--purple)' : 'var(--border)'}`, cursor:'pointer', display:'flex', alignItems:'center', gap:10, boxShadow:'var(--shadow)' }}>
+                <div style={{ width:44, height:44, borderRadius:12, background:'#F1F5F9', overflow:'hidden', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  <i className="ti ti-paw" style={{ color:'#64748B', fontSize:20 }} />
+                </div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:2 }}>
+                    <p style={{ fontSize:14, fontWeight:700, margin:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.pet_name}</p>
+                    <span style={{ fontSize:10, background:'#F1F5F9', color:'#64748B', borderRadius:6, padding:'1px 6px', fontWeight:700, flexShrink:0 }}>REGULAR</span>
+                  </div>
+                  <p style={{ fontSize:11, color:'var(--text-secondary)', margin:0 }}>{p.species} · {p.breed}</p>
+                  <p style={{ fontSize:11, color:'var(--text-muted)', margin:'2px 0 0' }}>Dueño: {p.owner_name}</p>
+                </div>
+                <div style={{ textAlign:'right', flexShrink:0 }}>
+                  {p.last_visit && <p style={{ fontSize:10, color:'var(--text-muted)', margin:'0 0 2px' }}>{new Date(p.last_visit+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'short'})}</p>}
+                  {p.visit_count > 0 && <span style={{ fontSize:10, background:'#F1F5F9', color:'#64748B', borderRadius:6, padding:'1px 6px', fontWeight:700 }}>{p.visit_count} visitas</span>}
+                </div>
+              </div>
+            ))}
+            {filteredRegular.length === 0 && (
+              <div style={{ textAlign:'center', padding:'40px 20px', color:'var(--text-muted)' }}>
+                <i className="ti ti-paw" style={{ fontSize:36, display:'block', marginBottom:8 }} />
+                <p style={{ fontSize:13, margin:'0 0 12px' }}>Sin pacientes regulares</p>
+                <button className="btn btn-primary" onClick={() => { setShowNew(true); setTab('regular') }}>+ Agregar primero</button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ===== EXPEDIENTE ===== */}
@@ -273,25 +396,29 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
         <div>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
             <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-              <div style={{ width:56, height:56, borderRadius:14, overflow:'hidden', background:'var(--purple-light)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                {selected.pets?.photo_url ? <img src={selected.pets.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <i className="ti ti-paw" style={{ fontSize:24, color:'var(--purple)' }} />}
+              <div style={{ width:56, height:56, borderRadius:14, overflow:'hidden', background: selectedType==='lumi' ? 'var(--purple-light)' : '#F1F5F9', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                {selectedType==='lumi' && selected.pets?.photo_url
+                  ? <img src={selected.pets.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                  : <i className="ti ti-paw" style={{ fontSize:24, color: selectedType==='lumi' ? 'var(--purple)' : '#64748B' }} />}
               </div>
               <div>
                 <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                  <p style={{ fontSize:18, fontWeight:800, margin:'0 0 2px' }}>{selected.pets?.name}</p>
-                  {isLumi(selected)
+                  <p style={{ fontSize:18, fontWeight:800, margin:'0 0 2px' }}>{petName}</p>
+                  {selectedType === 'lumi'
                     ? <span style={{ fontSize:11, background:'#EDE9FE', color:'#6B21A8', borderRadius:6, padding:'2px 8px', fontWeight:700 }}>🐾 LUMI</span>
                     : <span style={{ fontSize:11, background:'#F1F5F9', color:'#64748B', borderRadius:6, padding:'2px 8px', fontWeight:700 }}>REGULAR</span>}
                 </div>
                 <p style={{ fontSize:13, color:'var(--text-secondary)', margin:0 }}>
-                  {selected.pets?.species} · {selected.pets?.breed} · {selected.pets?.gender} · {calcAge(selected.pets?.birthdate)}
+                  {selectedType==='lumi'
+                    ? `${selected.pets?.species} · ${selected.pets?.breed} · ${selected.pets?.gender} · ${calcAge(selected.pets?.birthdate)}`
+                    : `${selected.species} · ${selected.breed} · ${selected.gender}`}
                 </p>
               </div>
             </div>
             <button className="btn btn-icon" style={{ background:'var(--bg)' }} onClick={() => setSelected(null)}><i className="ti ti-x" /></button>
           </div>
 
-          {/* Botones de acción */}
+          {/* Botones acción */}
           <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap' }}>
             <button className="btn btn-primary btn-sm" onClick={() => setShowVisit(true)}>
               <i className="ti ti-plus" /> + Visita
@@ -299,10 +426,10 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
             <button className="btn btn-secondary btn-sm" onClick={() => setShowRecord(true)}>
               <i className="ti ti-file-plus" /> Nueva consulta
             </button>
-            <button className="btn btn-secondary btn-sm" onClick={() => onNavigateAppointment && onNavigateAppointment({ pet_name: selected.pets?.name, owner_name: selected.profiles?.name || '' })}>
+            <button className="btn btn-secondary btn-sm" onClick={() => onNavigateAppointment && onNavigateAppointment({ pet_name: petName, owner_name: ownerName || '' })}>
               <i className="ti ti-calendar-plus" /> Agendar cita
             </button>
-            {isLumi(selected) && (
+            {selectedType === 'lumi' && (
               <button className="btn btn-secondary btn-sm" style={{ color:'var(--purple)', borderColor:'var(--purple)' }}
                 onClick={() => { setShowCarnet(true); setCarnetStep('code'); setCarnetCode(''); setCarnetError('') }}>
                 <i className="ti ti-certificate" /> Actualizar carnet
@@ -310,23 +437,23 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
             )}
           </div>
 
-          {/* Dueño */}
+          {/* Info dueño */}
           <div className="card" style={{ marginBottom:14 }}>
             <p style={{ fontSize:12, fontWeight:700, margin:'0 0 8px', color:'var(--text-secondary)', textTransform:'uppercase', letterSpacing:'0.5px' }}>Dueño</p>
             <div style={{ display:'flex', gap:16, flexWrap:'wrap' }}>
-              <span style={{ fontSize:13 }}><i className="ti ti-user" style={{ color:'var(--purple)' }} /> {selected.profiles?.name || '—'}</span>
-              <span style={{ fontSize:13 }}><i className="ti ti-phone" style={{ color:'var(--purple)' }} /> {selected.profiles?.phone || '—'}</span>
-              {selected.profiles?.email && <span style={{ fontSize:13 }}><i className="ti ti-mail" style={{ color:'var(--purple)' }} /> {selected.profiles?.email}</span>}
+              <span style={{ fontSize:13 }}><i className="ti ti-user" style={{ color:'var(--purple)' }} /> {ownerName || '—'}</span>
+              <span style={{ fontSize:13 }}><i className="ti ti-phone" style={{ color:'var(--purple)' }} /> {ownerPhone || '—'}</span>
+              {ownerEmail && <span style={{ fontSize:13 }}><i className="ti ti-mail" style={{ color:'var(--purple)' }} /> {ownerEmail}</span>}
             </div>
-            {isLumi(selected) && (
+            {selectedType === 'lumi' && (
               <div style={{ marginTop:10, padding:'7px 12px', background:'#EDE9FE', borderRadius:8, fontSize:12, color:'#6B21A8', fontWeight:600 }}>
-                🐾 Código Lumi: {selected.pets?.lumi_id} · Visitas registradas: {selected.visit_count || 0}
+                🐾 Código Lumi: {selected.pets?.lumi_id} · Consulta otorgará +15 puntos
               </div>
             )}
           </div>
 
-          {/* Carnet vacunas */}
-          {isLumi(selected) && (
+          {/* Carnet vacunas (solo Lumi) */}
+          {selectedType === 'lumi' && (
             <div className="card" style={{ marginBottom:14 }}>
               <p style={{ fontSize:13, fontWeight:800, margin:'0 0 12px' }}>💉 Carnet de vacunas</p>
               {vaccines.length === 0 ? (
@@ -350,23 +477,7 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
             </div>
           )}
 
-          {/* Historial visitas */}
-          {visits.length > 0 && (
-            <div className="card" style={{ marginBottom:14 }}>
-              <p style={{ fontSize:13, fontWeight:800, margin:'0 0 12px' }}>🏷️ Historial de visitas ({visits.length})</p>
-              <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-                {visits.slice(0,5).map(v => (
-                  <div key={v.id} style={{ display:'flex', justifyContent:'space-between', padding:'6px 10px', background:'var(--bg)', borderRadius:8, fontSize:12 }}>
-                    <span style={{ color:'var(--text-secondary)' }}>{new Date(v.created_at).toLocaleDateString('es-MX',{day:'numeric',month:'short',year:'numeric'})}</span>
-                    <span style={{ fontWeight:600, color:'var(--purple)' }}>{v.reason}</span>
-                    <span style={{ fontWeight:700 }}>+{v.points} pts</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Historial consultas */}
+          {/* Historial */}
           <div className="card">
             <p style={{ fontSize:15, fontWeight:800, margin:'0 0 16px' }}>Historial de consultas</p>
             {records.length === 0 ? (
@@ -374,18 +485,21 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
             ) : (
               <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
                 {records.map(r => (
-                  <div key={r.id} style={{ padding:'14px', background:'var(--bg)', borderRadius:12, borderLeft:'3px solid var(--purple)' }}>
+                  <div key={r.id} style={{ padding:'14px', background:'var(--bg)', borderRadius:12, borderLeft:`3px solid ${r.type === 'servicio' ? '#D97706' : r.type === 'producto' ? '#16A34A' : 'var(--purple)'}` }}>
                     <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
                       <p style={{ fontSize:13, fontWeight:700, margin:0 }}>{new Date(r.date+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'long',year:'numeric'})}</p>
                       <div style={{ display:'flex', gap:8 }}>
+                        {r.type && r.type !== 'consulta' && <span className="badge badge-amber" style={{ textTransform:'capitalize' }}>{r.type}</span>}
                         {r.weight && <span className="badge badge-gray">{r.weight} kg</span>}
                         {r.temperature && <span className="badge badge-amber">{r.temperature}°C</span>}
+                        {r.price > 0 && <span className="badge badge-green">${r.price}</span>}
                       </div>
                     </div>
-                    {r.diagnosis  && <p style={{ fontSize:13, margin:'0 0 4px' }}><strong>Diagnóstico:</strong> {r.diagnosis}</p>}
-                    {r.treatment  && <p style={{ fontSize:13, margin:'0 0 4px' }}><strong>Tratamiento:</strong> {r.treatment}</p>}
-                    {r.notes      && <p style={{ fontSize:13, color:'var(--text-secondary)', margin:0 }}>{r.notes}</p>}
-                    {r.next_visit && <p style={{ fontSize:12, color:'var(--purple)', margin:'6px 0 0', fontWeight:600 }}>📅 Próxima visita: {new Date(r.next_visit+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'long'})}</p>}
+                    {r.description && <p style={{ fontSize:13, margin:'0 0 4px', color:'var(--text-secondary)' }}>{r.description}</p>}
+                    {r.diagnosis   && <p style={{ fontSize:13, margin:'0 0 4px' }}><strong>Diagnóstico:</strong> {r.diagnosis}</p>}
+                    {r.treatment   && <p style={{ fontSize:13, margin:'0 0 4px' }}><strong>Tratamiento:</strong> {r.treatment}</p>}
+                    {r.notes       && <p style={{ fontSize:13, color:'var(--text-secondary)', margin:0 }}>{r.notes}</p>}
+                    {r.next_visit  && <p style={{ fontSize:12, color:'var(--purple)', margin:'6px 0 0', fontWeight:600 }}>📅 Próxima visita: {new Date(r.next_visit+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'long'})}</p>}
                   </div>
                 ))}
               </div>
@@ -398,22 +512,21 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
       {showVisit && (
         <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setShowVisit(false)}>
           <div className="modal">
-            <p style={{ fontSize:17, fontWeight:800, margin:'0 0 20px' }}>+ Visita — {selected.pets?.name}</p>
+            <p style={{ fontSize:17, fontWeight:800, margin:'0 0 20px' }}>+ Visita — {petName}</p>
             <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
               <div>
                 <label className="label">Tipo de visita</label>
                 <div style={{ display:'flex', gap:8 }}>
                   {['servicio','producto'].map(t => (
                     <button key={t} onClick={() => setVisitForm(f=>({...f,type:t}))}
-                      style={{ flex:1, padding:'10px', borderRadius:8, border:`2px solid ${visitForm.type===t ? '#6B21A8' : 'var(--border)'}`,
-                        background: visitForm.type===t ? '#EDE9FE' : 'white', cursor:'pointer', fontWeight:700, fontSize:13, color: visitForm.type===t ? '#6B21A8' : 'var(--text-secondary)', textTransform:'capitalize' }}>
+                      style={{ flex:1, padding:'10px', borderRadius:8, border:`2px solid ${visitForm.type===t ? '#6B21A8' : 'var(--border)'}`, background: visitForm.type===t ? '#EDE9FE' : 'white', cursor:'pointer', fontWeight:700, fontSize:13, color: visitForm.type===t ? '#6B21A8' : 'var(--text-secondary)' }}>
                       {t === 'servicio' ? '🛠 Servicio' : '📦 Producto'}
                     </button>
                   ))}
                 </div>
               </div>
               <div>
-                <label className="label">Descripción</label>
+                <label className="label">Descripción *</label>
                 <input className="input" value={visitForm.description} onChange={e => setVisitForm(f=>({...f,description:e.target.value}))}
                   placeholder={visitForm.type==='servicio' ? 'Consulta, vacuna, cirugía...' : 'Alimento, medicamento, accesorio...'} />
               </div>
@@ -434,8 +547,8 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
       {showRecord && (
         <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setShowRecord(false)}>
           <div className="modal">
-            <p style={{ fontSize:17, fontWeight:800, margin:'0 0 20px' }}>Nueva consulta — {selected.pets?.name}</p>
-            {isLumi(selected) && (
+            <p style={{ fontSize:17, fontWeight:800, margin:'0 0 20px' }}>Nueva consulta — {petName}</p>
+            {selectedType === 'lumi' && (
               <div style={{ background:'#EDE9FE', borderRadius:8, padding:'8px 12px', marginBottom:14, fontSize:12, color:'#6B21A8', fontWeight:600 }}>
                 🐾 Paciente Lumi — se otorgarán +15 puntos al guardar
               </div>
@@ -469,8 +582,8 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
               </div>
               <div style={{ display:'flex', gap:10 }}>
                 <button className="btn btn-secondary" onClick={() => setShowRecord(false)} style={{ flex:1, justifyContent:'center' }}>Cancelar</button>
-                <button className="btn btn-primary" onClick={saveRecord} style={{ flex:2, justifyContent:'center' }}>
-                  Guardar consulta {isLumi(selected) ? '(+15 pts)' : ''}
+                <button className="btn btn-primary" onClick={selectedType==='lumi' ? saveLumiRecord : saveRegularRecord} style={{ flex:2, justifyContent:'center' }}>
+                  Guardar consulta {selectedType==='lumi' ? '(+15 pts)' : ''}
                 </button>
               </div>
             </div>
@@ -483,8 +596,7 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
         <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setShowCarnet(false)}>
           <div className="modal">
             <p style={{ fontSize:17, fontWeight:800, margin:'0 0 6px' }}>💉 Actualizar carnet digital</p>
-            <p style={{ fontSize:12, color:'var(--text-muted)', margin:'0 0 20px' }}>{selected.pets?.name} · {selected.pets?.lumi_id}</p>
-
+            <p style={{ fontSize:12, color:'var(--text-muted)', margin:'0 0 20px' }}>{petName} · {selected?.pets?.lumi_id}</p>
             {carnetStep === 'code' && (
               <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
                 <div style={{ background:'#FEF3C7', borderRadius:10, padding:'12px 14px', fontSize:13, color:'#92400E' }}>
@@ -503,7 +615,6 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
                 </div>
               </div>
             )}
-
             {carnetStep === 'form' && (
               <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
                 <div style={{ background:'#DCFCE7', borderRadius:8, padding:'8px 12px', fontSize:12, color:'#15803D', fontWeight:600 }}>
@@ -547,13 +658,15 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
               <button onClick={() => setTab('regular')} style={{ flex:1, padding:'9px 0', fontSize:13, fontWeight:700, border:'none', cursor:'pointer', background: tab==='regular' ? '#6B21A8' : 'white', color: tab==='regular' ? 'white' : 'var(--text-secondary)' }}>👤 Paciente Regular</button>
             </div>
 
+            {/* Tab Lumi */}
             {tab === 'lumi' && (
               <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
                 <p style={{ fontSize:13, color:'var(--text-secondary)', margin:0 }}>
                   Ingresa el código Lumi del dueño (ej: <strong>LMI-2026-L1RD62</strong>) para cargar automáticamente los datos.
                 </p>
                 <div style={{ display:'flex', gap:8 }}>
-                  <input className="input" value={lumiCode} onChange={e => { setLumiCode(e.target.value.toUpperCase()); setLumiError(''); setLumiSearch(null) }}
+                  <input className="input" value={lumiCode}
+                    onChange={e => { setLumiCode(e.target.value.toUpperCase()); setLumiError(''); setLumiSearch(null) }}
                     placeholder="LMI-2026-XXXXXX" style={{ flex:1, fontFamily:'monospace', letterSpacing:'1px' }}
                     onKeyDown={e => e.key==='Enter' && searchLumiCode()} />
                   <button className="btn btn-primary" onClick={searchLumiCode} disabled={lumiLoading || !lumiCode.trim()}>
@@ -588,6 +701,7 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
               </div>
             )}
 
+            {/* Tab Regular */}
             {tab === 'regular' && (
               <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
                 <p style={{ fontSize:13, fontWeight:700, color:'var(--purple)', textTransform:'uppercase', letterSpacing:'0.5px', margin:0 }}>Datos del dueño</p>
@@ -639,7 +753,11 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
                 </div>
                 <div style={{ display:'flex', gap:10 }}>
                   <button className="btn btn-secondary" onClick={() => setShowNew(false)} style={{ flex:1, justifyContent:'center' }}>Cancelar</button>
-                  <button className="btn btn-primary" onClick={saveNewPatient} disabled={!newForm.owner_name || !newForm.pet_name} style={{ flex:2, justifyContent:'center' }}>Guardar paciente</button>
+                  <button className="btn btn-primary" onClick={saveNewPatient}
+                    disabled={!newForm.owner_name.trim() || !newForm.pet_name.trim() || saving}
+                    style={{ flex:2, justifyContent:'center' }}>
+                    {saving ? 'Guardando...' : 'Guardar paciente'}
+                  </button>
                 </div>
               </div>
             )}
