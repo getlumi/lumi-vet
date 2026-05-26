@@ -2,49 +2,35 @@ import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
 export default function Patients({ clinic, openNew, onNavigateAppointment }) {
-  const [tab, setTab]                 = useState('todos')
-  const [lumiPatients, setLumiPatients]       = useState([])
+  const [tab, setTab]                       = useState('todos')
+  const [lumiPatients, setLumiPatients]     = useState([])
   const [regularPatients, setRegularPatients] = useState([])
-  const [search, setSearch]           = useState('')
-  const [selected, setSelected]       = useState(null)
-  const [selectedType, setSelectedType] = useState(null) // 'lumi' | 'regular'
-  const [records, setRecords]         = useState([])
-  const [vaccines, setVaccines]       = useState([])
-  const [showRecord, setShowRecord]   = useState(false)
-  const [showNew, setShowNew]         = useState(openNew || false)
-  const [showVisit, setShowVisit]     = useState(false)
-  const [showCarnet, setShowCarnet]   = useState(false)
-  const [pointsMsg, setPointsMsg]     = useState(null)
-  const [saving, setSaving]           = useState(false)
-
-  // Lumi search (para nuevo paciente)
-  const [lumiCode, setLumiCode]       = useState('')
-  const [lumiSearch, setLumiSearch]   = useState(null)
-  const [lumiLoading, setLumiLoading] = useState(false)
-  const [lumiError, setLumiError]     = useState('')
-
-  // Carnet
-  const [carnetCode, setCarnetCode]   = useState('')
-  const [carnetError, setCarnetError] = useState('')
-  const [carnetStep, setCarnetStep]   = useState('code')
-  const [vaccineForm, setVaccineForm] = useState({ name:'', date:'', next_date:'', notes:'' })
-
-  // Visit
-  const [visitForm, setVisitForm]     = useState({ type:'servicio', description:'', price:'' })
-
-  // Record (consulta)
-  const [recordForm, setRecordForm]   = useState({ diagnosis:'', treatment:'', notes:'', weight:'', temperature:'', next_visit:'' })
-
-  // New regular patient
-  const [newForm, setNewForm] = useState({
-    owner_name:'', owner_phone:'', owner_email:'',
-    pet_name:'', species:'perro', breed:'', weight:'', gender:'macho', notes:''
-  })
+  const [search, setSearch]                 = useState('')
+  const [selected, setSelected]             = useState(null)
+  const [selectedType, setSelectedType]     = useState(null)
+  const [records, setRecords]               = useState([])
+  const [vaccines, setVaccines]             = useState([])
+  const [showRecord, setShowRecord]         = useState(false)
+  const [showNew, setShowNew]               = useState(openNew || false)
+  const [showVisit, setShowVisit]           = useState(false)
+  const [showCarnet, setShowCarnet]         = useState(false)
+  const [pointsMsg, setPointsMsg]           = useState(null)
+  const [saving, setSaving]                 = useState(false)
+  const [lumiCode, setLumiCode]             = useState('')
+  const [lumiSearch, setLumiSearch]         = useState(null)
+  const [lumiLoading, setLumiLoading]       = useState(false)
+  const [lumiError, setLumiError]           = useState('')
+  const [carnetCode, setCarnetCode]         = useState('')
+  const [carnetError, setCarnetError]       = useState('')
+  const [carnetStep, setCarnetStep]         = useState('code')
+  const [vaccineForm, setVaccineForm]       = useState({ name:'', date:'', next_date:'', notes:'' })
+  const [visitForm, setVisitForm]           = useState({ type:'servicio', description:'', price:'' })
+  const [recordForm, setRecordForm]         = useState({ diagnosis:'', treatment:'', notes:'', weight:'', temperature:'', next_visit:'' })
+  const [newForm, setNewForm]               = useState({ owner_name:'', owner_phone:'', owner_email:'', pet_name:'', species:'perro', breed:'', weight:'', gender:'macho', notes:'' })
 
   useEffect(() => { fetchAll() }, [])
 
   const fetchAll = async () => {
-    // Pacientes Lumi
     const { data: lumi } = await supabase
       .from('vet_patients')
       .select('*, pets(id,name,breed,photo_url,birthdate,gender,lumi_id,species), profiles(id,name,phone,email)')
@@ -52,7 +38,6 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
       .order('last_visit', { ascending: false })
     setLumiPatients(lumi || [])
 
-    // Pacientes regulares
     const { data: regular } = await supabase
       .from('vet_regular_patients')
       .select('*')
@@ -71,55 +56,20 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
   }
 
   const fetchRegularRecords = async (patientId) => {
-    const { data } = await supabase
-      .from('vet_regular_records')
-      .select('*')
-      .eq('regular_patient_id', patientId)
-      .order('date', { ascending: false })
+    const { data } = await supabase.from('vet_regular_records').select('*').eq('regular_patient_id', patientId).order('date', { ascending: false })
     setRecords(data || [])
     setVaccines([])
   }
 
-  const selectLumi = async (p) => {
-    setSelected(p)
-    setSelectedType('lumi')
-    await fetchLumiRecords(p.pet_id)
-  }
+  const selectLumi    = async (p) => { setSelected(p); setSelectedType('lumi');    await fetchLumiRecords(p.pet_id) }
+  const selectRegular = async (p) => { setSelected(p); setSelectedType('regular'); await fetchRegularRecords(p.id) }
 
-  const selectRegular = async (p) => {
-    setSelected(p)
-    setSelectedType('regular')
-    await fetchRegularRecords(p.id)
-  }
-
-  // ── Buscar Lumi por código ──
   const searchLumiCode = async () => {
     if (!lumiCode.trim()) return
-    setLumiLoading(true)
-    setLumiError('')
-    setLumiSearch(null)
-
-    const { data: pet } = await supabase
-      .from('pets')
-      .select('*, profiles(id,name,phone,email)')
-      .eq('lumi_id', lumiCode.trim().toUpperCase())
-      .single()
-
-    if (!pet) {
-      setLumiError('No se encontró ninguna mascota con ese código')
-      setLumiLoading(false)
-      return
-    }
-
-    const { data: lastVisit } = await supabase
-      .from('vet_records')
-      .select('*')
-      .eq('clinic_id', clinic.id)
-      .eq('pet_id', pet.id)
-      .order('date', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
+    setLumiLoading(true); setLumiError(''); setLumiSearch(null)
+    const { data: pet } = await supabase.from('pets').select('*, profiles(id,name,phone,email)').eq('lumi_id', lumiCode.trim().toUpperCase()).single()
+    if (!pet) { setLumiError('No se encontró ninguna mascota con ese código'); setLumiLoading(false); return }
+    const { data: lastVisit } = await supabase.from('vet_records').select('*').eq('clinic_id', clinic.id).eq('pet_id', pet.id).order('date', { ascending: false }).limit(1).maybeSingle()
     setLumiSearch({ pet, lastVisit })
     setLumiLoading(false)
   }
@@ -127,46 +77,22 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
   const registerLumiPatient = async () => {
     if (!lumiSearch) return
     const { pet } = lumiSearch
-
-    const { data: existing } = await supabase
-      .from('vet_patients')
-      .select('id')
-      .eq('clinic_id', clinic.id)
-      .eq('pet_id', pet.id)
-      .maybeSingle()
-
+    const { data: existing } = await supabase.from('vet_patients').select('id').eq('clinic_id', clinic.id).eq('pet_id', pet.id).maybeSingle()
     if (existing) { setLumiError('Esta mascota ya está registrada en tu clínica'); return }
-
-    const { error } = await supabase.from('vet_patients').insert({
-      clinic_id: clinic.id,
-      pet_id:    pet.id,
-      owner_id:  pet.profiles?.id,
-    })
-
+    const { error } = await supabase.from('vet_patients').insert({ clinic_id: clinic.id, pet_id: pet.id, owner_id: pet.profiles?.id })
     if (error) { setLumiError(`Error: ${error.message}`); return }
-
     setShowNew(false); setLumiCode(''); setLumiSearch(null); setLumiError('')
     fetchAll()
   }
 
-  // ── Guardar paciente regular ──
   const saveNewPatient = async () => {
     if (!newForm.owner_name.trim() || !newForm.pet_name.trim()) return
     setSaving(true)
-
     const { error } = await supabase.from('vet_regular_patients').insert({
-      clinic_id:   clinic.id,
-      owner_name:  newForm.owner_name.trim(),
-      owner_phone: newForm.owner_phone.trim(),
-      owner_email: newForm.owner_email.trim(),
-      pet_name:    newForm.pet_name.trim(),
-      species:     newForm.species,
-      breed:       newForm.breed.trim(),
-      gender:      newForm.gender,
-      weight:      newForm.weight ? parseFloat(newForm.weight) : null,
-      notes:       newForm.notes.trim(),
+      clinic_id: clinic.id, owner_name: newForm.owner_name.trim(), owner_phone: newForm.owner_phone.trim(),
+      owner_email: newForm.owner_email.trim(), pet_name: newForm.pet_name.trim(), species: newForm.species,
+      breed: newForm.breed.trim(), gender: newForm.gender, weight: newForm.weight ? parseFloat(newForm.weight) : null, notes: newForm.notes.trim(),
     })
-
     setSaving(false)
     if (!error) {
       setShowNew(false)
@@ -175,44 +101,26 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
     }
   }
 
-  // ── Guardar consulta Lumi ──
   const saveLumiRecord = async () => {
     const { data: record } = await supabase.from('vet_records').insert({
-      clinic_id: clinic.id,
-      pet_id:    selected.pet_id,
-      date:      new Date().toISOString().slice(0,10),
-      ...recordForm,
-      weight:      recordForm.weight      ? parseFloat(recordForm.weight)      : null,
-      temperature: recordForm.temperature ? parseFloat(recordForm.temperature) : null,
+      clinic_id: clinic.id, pet_id: selected.pet_id, date: new Date().toISOString().slice(0,10),
+      ...recordForm, weight: recordForm.weight ? parseFloat(recordForm.weight) : null, temperature: recordForm.temperature ? parseFloat(recordForm.temperature) : null,
     }).select().single()
-
     await supabase.from('vet_patients').update({ last_visit: new Date().toISOString().slice(0,10) }).eq('id', selected.id)
-
     if (record && selected.pets?.lumi_id && selected.owner_id) {
-      await supabase.rpc('grant_visit_points', {
-        p_clinic_id: clinic.id,
-        p_owner_id:  selected.owner_id,
-        p_pet_id:    selected.pet_id,
-        p_record_id: record.id,
-      })
+      await supabase.rpc('grant_visit_points', { p_clinic_id: clinic.id, p_owner_id: selected.owner_id, p_pet_id: selected.pet_id, p_record_id: record.id })
       setPointsMsg(`+15 puntos otorgados a ${selected.profiles?.name || 'el dueño'} 🎉`)
       setTimeout(() => setPointsMsg(null), 4000)
     }
-
     await fetchLumiRecords(selected.pet_id)
     setShowRecord(false)
     setRecordForm({ diagnosis:'', treatment:'', notes:'', weight:'', temperature:'', next_visit:'' })
   }
 
-  // ── Guardar consulta Regular ──
   const saveRegularRecord = async () => {
     await supabase.from('vet_regular_records').insert({
-      clinic_id:          clinic.id,
-      regular_patient_id: selected.id,
-      date:               new Date().toISOString().slice(0,10),
-      ...recordForm,
-      weight:      recordForm.weight      ? parseFloat(recordForm.weight)      : null,
-      temperature: recordForm.temperature ? parseFloat(recordForm.temperature) : null,
+      clinic_id: clinic.id, regular_patient_id: selected.id, date: new Date().toISOString().slice(0,10),
+      ...recordForm, weight: recordForm.weight ? parseFloat(recordForm.weight) : null, temperature: recordForm.temperature ? parseFloat(recordForm.temperature) : null,
     })
     await supabase.from('vet_regular_patients').update({ last_visit: new Date().toISOString().slice(0,10) }).eq('id', selected.id)
     await fetchRegularRecords(selected.id)
@@ -220,51 +128,20 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
     setRecordForm({ diagnosis:'', treatment:'', notes:'', weight:'', temperature:'', next_visit:'' })
   }
 
-  // ── Guardar visita ──
   const saveVisit = async () => {
     if (selectedType === 'lumi') {
-      await supabase.from('vet_transactions').insert({
-        clinic_id:   clinic.id,
-        pet_id:      selected.pet_id,
-        owner_id:    selected.owner_id,
-        type:        'income',
-        category:    visitForm.type,
-        description: visitForm.description,
-        amount:      visitForm.price ? parseFloat(visitForm.price) : 0,
-        date:        new Date().toISOString().slice(0,10),
-      })
-      await supabase.from('vet_patients').update({
-        last_visit:  new Date().toISOString().slice(0,10),
-        visit_count: (selected.visit_count || 0) + 1,
-      }).eq('id', selected.id)
+      await supabase.from('vet_transactions').insert({ clinic_id: clinic.id, pet_id: selected.pet_id, owner_id: selected.owner_id, type: 'income', category: visitForm.type, description: visitForm.description, amount: visitForm.price ? parseFloat(visitForm.price) : 0, date: new Date().toISOString().slice(0,10) })
+      await supabase.from('vet_patients').update({ last_visit: new Date().toISOString().slice(0,10), visit_count: (selected.visit_count || 0) + 1 }).eq('id', selected.id)
     } else {
-      await supabase.from('vet_regular_records').insert({
-        clinic_id:          clinic.id,
-        regular_patient_id: selected.id,
-        date:               new Date().toISOString().slice(0,10),
-        type:               visitForm.type,
-        description:        visitForm.description,
-        price:              visitForm.price ? parseFloat(visitForm.price) : 0,
-      })
-      await supabase.from('vet_regular_patients').update({
-        last_visit:  new Date().toISOString().slice(0,10),
-        visit_count: (selected.visit_count || 0) + 1,
-      }).eq('id', selected.id)
+      await supabase.from('vet_regular_records').insert({ clinic_id: clinic.id, regular_patient_id: selected.id, date: new Date().toISOString().slice(0,10), type: visitForm.type, description: visitForm.description, price: visitForm.price ? parseFloat(visitForm.price) : 0 })
+      await supabase.from('vet_regular_patients').update({ last_visit: new Date().toISOString().slice(0,10), visit_count: (selected.visit_count || 0) + 1 }).eq('id', selected.id)
     }
-    setShowVisit(false)
-    setVisitForm({ type:'servicio', description:'', price:'' })
-    fetchAll()
+    setShowVisit(false); setVisitForm({ type:'servicio', description:'', price:'' }); fetchAll()
   }
 
-  // ── Carnet ──
   const verifyCarnetCode = async () => {
     setCarnetError('')
-    const { data } = await supabase
-      .from('vet_auth_codes')
-      .select('*')
-      .eq('pet_id', selected.pet_id)
-      .eq('code', carnetCode.trim().toUpperCase())
-      .maybeSingle()
+    const { data } = await supabase.from('vet_auth_codes').select('*').eq('pet_id', selected.pet_id).eq('code', carnetCode.trim().toUpperCase()).maybeSingle()
     if (!data) { setCarnetError('Código incorrecto. Pide al dueño el código de su app.'); return }
     setCarnetStep('form')
   }
@@ -272,8 +149,7 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
   const saveVaccine = async () => {
     await supabase.from('vaccines').insert({ pet_id: selected.pet_id, clinic_id: clinic.id, ...vaccineForm })
     await fetchLumiRecords(selected.pet_id)
-    setShowCarnet(false); setCarnetCode(''); setCarnetStep('code')
-    setVaccineForm({ name:'', date:'', next_date:'', notes:'' })
+    setShowCarnet(false); setCarnetCode(''); setCarnetStep('code'); setVaccineForm({ name:'', date:'', next_date:'', notes:'' })
   }
 
   const calcAge = (bd) => {
@@ -282,10 +158,9 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
     return y > 0 ? `${y} años` : 'Cachorro'
   }
 
-  // Lista unificada
   const allPatients = [
-    ...lumiPatients.map(p => ({ ...p, _type:'lumi',    _name: p.pets?.name, _owner: p.profiles?.name })),
-    ...regularPatients.map(p => ({ ...p, _type:'regular', _name: p.pet_name,   _owner: p.owner_name })),
+    ...lumiPatients.map(p => ({ ...p, _type:'lumi', _name: p.pets?.name, _owner: p.profiles?.name })),
+    ...regularPatients.map(p => ({ ...p, _type:'regular', _name: p.pet_name, _owner: p.owner_name })),
   ].sort((a,b) => (b.last_visit||'2000-01-01').localeCompare(a.last_visit||'2000-01-01'))
 
   const filteredAll = allPatients.filter(p => {
@@ -294,22 +169,22 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
     return matchSearch && p._type === (tab === 'lumi' ? 'lumi' : 'regular')
   })
 
-  const petName    = selectedType === 'lumi' ? selected?.pets?.name     : selected?.pet_name
+  const petName    = selectedType === 'lumi' ? selected?.pets?.name      : selected?.pet_name
   const ownerName  = selectedType === 'lumi' ? selected?.profiles?.name  : selected?.owner_name
   const ownerPhone = selectedType === 'lumi' ? selected?.profiles?.phone : selected?.owner_phone
   const ownerEmail = selectedType === 'lumi' ? selected?.profiles?.email : selected?.owner_email
 
   return (
     <div style={{ display:'grid', gridTemplateColumns: selected ? '340px 1fr' : '1fr', gap:20 }}>
+
+      {/* LISTA */}
       <div>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
           <p style={{ fontSize:20, fontWeight:800, margin:0 }}>Pacientes <span style={{ fontSize:14, color:'var(--text-muted)', fontWeight:500 }}>({allPatients.length})</span></p>
           <button className="btn btn-primary" onClick={() => setShowNew(true)}><i className="ti ti-plus" /> Nuevo paciente</button>
         </div>
 
-        {pointsMsg && (
-          <div style={{ background:'#DCFCE7', border:'1px solid #16A34A', borderRadius:10, padding:'10px 14px', marginBottom:12, fontSize:13, color:'#15803D', fontWeight:600 }}>{pointsMsg}</div>
-        )}
+        {pointsMsg && <div style={{ background:'#DCFCE7', border:'1px solid #16A34A', borderRadius:10, padding:'10px 14px', marginBottom:12, fontSize:13, color:'#15803D', fontWeight:600 }}>{pointsMsg}</div>}
 
         <div style={{ display:'flex', marginBottom:14, border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
           {[
@@ -318,8 +193,7 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
             { key:'regular', label:`👤 Regular (${regularPatients.length})` },
           ].map(t => (
             <button key={t.key} onClick={() => { setTab(t.key); setSelected(null) }}
-              style={{ flex:1, padding:'9px 0', fontSize:12, fontWeight:700, border:'none', cursor:'pointer',
-                background: tab===t.key ? '#6B21A8' : 'white', color: tab===t.key ? 'white' : 'var(--text-secondary)' }}>
+              style={{ flex:1, padding:'9px 0', fontSize:12, fontWeight:700, border:'none', cursor:'pointer', background: tab===t.key ? '#6B21A8' : 'white', color: tab===t.key ? 'white' : 'var(--text-secondary)' }}>
               {t.label}
             </button>
           ))}
@@ -362,7 +236,33 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
           )}
         </div>
       </div>
-            </button>
+
+      {/* EXPEDIENTE */}
+      {selected && (
+        <div>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+              <div style={{ width:56, height:56, borderRadius:14, overflow:'hidden', background: selectedType==='lumi' ? 'var(--purple-light)' : '#F1F5F9', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                {selectedType==='lumi' && selected.pets?.photo_url ? <img src={selected.pets.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <i className="ti ti-paw" style={{ fontSize:24, color: selectedType==='lumi' ? 'var(--purple)' : '#64748B' }} />}
+              </div>
+              <div>
+                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                  <p style={{ fontSize:18, fontWeight:800, margin:'0 0 2px' }}>{petName}</p>
+                  {selectedType==='lumi' ? <span style={{ fontSize:11, background:'#EDE9FE', color:'#6B21A8', borderRadius:6, padding:'2px 8px', fontWeight:700 }}>🐾 LUMI</span>
+                                         : <span style={{ fontSize:11, background:'#F1F5F9', color:'#64748B', borderRadius:6, padding:'2px 8px', fontWeight:700 }}>REGULAR</span>}
+                </div>
+                <p style={{ fontSize:13, color:'var(--text-secondary)', margin:0 }}>
+                  {selectedType==='lumi' ? `${selected.pets?.species} · ${selected.pets?.breed} · ${selected.pets?.gender} · ${calcAge(selected.pets?.birthdate)}` : `${selected.species} · ${selected.breed} · ${selected.gender}`}
+                </p>
+              </div>
+            </div>
+            <button className="btn btn-icon" style={{ background:'var(--bg)' }} onClick={() => setSelected(null)}><i className="ti ti-x" /></button>
+          </div>
+
+          {/* Botones acción */}
+          <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap' }}>
+            <button className="btn btn-primary btn-sm" onClick={() => setShowVisit(true)}><i className="ti ti-plus" /> + Visita</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowRecord(true)}><i className="ti ti-file-plus" /> Nueva consulta</button>
             <button className="btn btn-secondary btn-sm" onClick={() => onNavigateAppointment && onNavigateAppointment({ pet_name: petName, owner_name: ownerName || '' })}>
               <i className="ti ti-calendar-plus" /> Agendar cita
             </button>
@@ -374,7 +274,7 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
             )}
           </div>
 
-          {/* Info dueño */}
+          {/* Dueño */}
           <div className="card" style={{ marginBottom:14 }}>
             <p style={{ fontSize:12, fontWeight:700, margin:'0 0 8px', color:'var(--text-secondary)', textTransform:'uppercase', letterSpacing:'0.5px' }}>Dueño</p>
             <div style={{ display:'flex', gap:16, flexWrap:'wrap' }}>
@@ -389,13 +289,11 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
             )}
           </div>
 
-          {/* Carnet vacunas (solo Lumi) */}
+          {/* Carnet vacunas */}
           {selectedType === 'lumi' && (
             <div className="card" style={{ marginBottom:14 }}>
               <p style={{ fontSize:13, fontWeight:800, margin:'0 0 12px' }}>💉 Carnet de vacunas</p>
-              {vaccines.length === 0 ? (
-                <p style={{ fontSize:13, color:'var(--text-muted)', textAlign:'center', padding:'12px 0' }}>Sin vacunas registradas</p>
-              ) : (
+              {vaccines.length === 0 ? <p style={{ fontSize:13, color:'var(--text-muted)', textAlign:'center', padding:'12px 0' }}>Sin vacunas registradas</p> : (
                 <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                   {vaccines.map(v => (
                     <div key={v.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 12px', background:'var(--bg)', borderRadius:8 }}>
@@ -417,16 +315,14 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
           {/* Historial */}
           <div className="card">
             <p style={{ fontSize:15, fontWeight:800, margin:'0 0 16px' }}>Historial de consultas</p>
-            {records.length === 0 ? (
-              <p style={{ color:'var(--text-muted)', textAlign:'center', padding:'20px 0' }}>Sin consultas registradas</p>
-            ) : (
+            {records.length === 0 ? <p style={{ color:'var(--text-muted)', textAlign:'center', padding:'20px 0' }}>Sin consultas registradas</p> : (
               <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
                 {records.map(r => (
-                  <div key={r.id} style={{ padding:'14px', background:'var(--bg)', borderRadius:12, borderLeft:`3px solid ${r.type === 'servicio' ? '#D97706' : r.type === 'producto' ? '#16A34A' : 'var(--purple)'}` }}>
+                  <div key={r.id} style={{ padding:'14px', background:'var(--bg)', borderRadius:12, borderLeft:`3px solid ${r.type==='servicio' ? '#D97706' : r.type==='producto' ? '#16A34A' : 'var(--purple)'}` }}>
                     <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
                       <p style={{ fontSize:13, fontWeight:700, margin:0 }}>{new Date(r.date+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'long',year:'numeric'})}</p>
                       <div style={{ display:'flex', gap:8 }}>
-                        {r.type && r.type !== 'consulta' && <span className="badge badge-amber" style={{ textTransform:'capitalize' }}>{r.type}</span>}
+                        {r.type && r.type!=='consulta' && <span className="badge badge-amber" style={{ textTransform:'capitalize' }}>{r.type}</span>}
                         {r.weight && <span className="badge badge-gray">{r.weight} kg</span>}
                         {r.temperature && <span className="badge badge-amber">{r.temperature}°C</span>}
                         {r.price > 0 && <span className="badge badge-green">${r.price}</span>}
@@ -445,7 +341,7 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
         </div>
       )}
 
-      {/* ===== MODAL + VISITA ===== */}
+      {/* MODAL + VISITA */}
       {showVisit && (
         <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setShowVisit(false)}>
           <div className="modal">
@@ -464,8 +360,7 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
               </div>
               <div>
                 <label className="label">Descripción *</label>
-                <input className="input" value={visitForm.description} onChange={e => setVisitForm(f=>({...f,description:e.target.value}))}
-                  placeholder={visitForm.type==='servicio' ? 'Consulta, vacuna, cirugía...' : 'Alimento, medicamento, accesorio...'} />
+                <input className="input" value={visitForm.description} onChange={e => setVisitForm(f=>({...f,description:e.target.value}))} placeholder={visitForm.type==='servicio' ? 'Consulta, vacuna, cirugía...' : 'Alimento, medicamento, accesorio...'} />
               </div>
               <div>
                 <label className="label">Precio</label>
@@ -480,43 +375,21 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
         </div>
       )}
 
-      {/* ===== MODAL NUEVA CONSULTA ===== */}
+      {/* MODAL NUEVA CONSULTA */}
       {showRecord && (
         <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setShowRecord(false)}>
           <div className="modal">
             <p style={{ fontSize:17, fontWeight:800, margin:'0 0 20px' }}>Nueva consulta — {petName}</p>
-            {selectedType === 'lumi' && (
-              <div style={{ background:'#EDE9FE', borderRadius:8, padding:'8px 12px', marginBottom:14, fontSize:12, color:'#6B21A8', fontWeight:600 }}>
-                🐾 Paciente Lumi — se otorgarán +15 puntos al guardar
-              </div>
-            )}
+            {selectedType === 'lumi' && <div style={{ background:'#EDE9FE', borderRadius:8, padding:'8px 12px', marginBottom:14, fontSize:12, color:'#6B21A8', fontWeight:600 }}>🐾 Paciente Lumi — se otorgarán +15 puntos al guardar</div>}
             <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
               <div className="grid-2">
-                <div>
-                  <label className="label">Peso (kg)</label>
-                  <input className="input" type="number" step="0.1" value={recordForm.weight} onChange={e => setRecordForm(f=>({...f,weight:e.target.value}))} placeholder="3.5" />
-                </div>
-                <div>
-                  <label className="label">Temperatura (°C)</label>
-                  <input className="input" type="number" step="0.1" value={recordForm.temperature} onChange={e => setRecordForm(f=>({...f,temperature:e.target.value}))} placeholder="38.5" />
-                </div>
+                <div><label className="label">Peso (kg)</label><input className="input" type="number" step="0.1" value={recordForm.weight} onChange={e => setRecordForm(f=>({...f,weight:e.target.value}))} placeholder="3.5" /></div>
+                <div><label className="label">Temperatura (°C)</label><input className="input" type="number" step="0.1" value={recordForm.temperature} onChange={e => setRecordForm(f=>({...f,temperature:e.target.value}))} placeholder="38.5" /></div>
               </div>
-              <div>
-                <label className="label">Diagnóstico</label>
-                <input className="input" value={recordForm.diagnosis} onChange={e => setRecordForm(f=>({...f,diagnosis:e.target.value}))} placeholder="Diagnóstico principal..." />
-              </div>
-              <div>
-                <label className="label">Tratamiento</label>
-                <input className="input" value={recordForm.treatment} onChange={e => setRecordForm(f=>({...f,treatment:e.target.value}))} placeholder="Medicamentos, procedimientos..." />
-              </div>
-              <div>
-                <label className="label">Notas SOAP</label>
-                <textarea className="input" rows={3} value={recordForm.notes} onChange={e => setRecordForm(f=>({...f,notes:e.target.value}))} placeholder="Observaciones adicionales..." style={{ resize:'vertical' }} />
-              </div>
-              <div>
-                <label className="label">Próxima visita</label>
-                <input className="input" type="date" value={recordForm.next_visit} onChange={e => setRecordForm(f=>({...f,next_visit:e.target.value}))} />
-              </div>
+              <div><label className="label">Diagnóstico</label><input className="input" value={recordForm.diagnosis} onChange={e => setRecordForm(f=>({...f,diagnosis:e.target.value}))} placeholder="Diagnóstico principal..." /></div>
+              <div><label className="label">Tratamiento</label><input className="input" value={recordForm.treatment} onChange={e => setRecordForm(f=>({...f,treatment:e.target.value}))} placeholder="Medicamentos, procedimientos..." /></div>
+              <div><label className="label">Notas SOAP</label><textarea className="input" rows={3} value={recordForm.notes} onChange={e => setRecordForm(f=>({...f,notes:e.target.value}))} placeholder="Observaciones adicionales..." style={{ resize:'vertical' }} /></div>
+              <div><label className="label">Próxima visita</label><input className="input" type="date" value={recordForm.next_visit} onChange={e => setRecordForm(f=>({...f,next_visit:e.target.value}))} /></div>
               <div style={{ display:'flex', gap:10 }}>
                 <button className="btn btn-secondary" onClick={() => setShowRecord(false)} style={{ flex:1, justifyContent:'center' }}>Cancelar</button>
                 <button className="btn btn-primary" onClick={selectedType==='lumi' ? saveLumiRecord : saveRegularRecord} style={{ flex:2, justifyContent:'center' }}>
@@ -528,7 +401,7 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
         </div>
       )}
 
-      {/* ===== MODAL ACTUALIZAR CARNET ===== */}
+      {/* MODAL ACTUALIZAR CARNET */}
       {showCarnet && (
         <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setShowCarnet(false)}>
           <div className="modal">
@@ -537,13 +410,11 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
             {carnetStep === 'code' && (
               <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
                 <div style={{ background:'#FEF3C7', borderRadius:10, padding:'12px 14px', fontSize:13, color:'#92400E' }}>
-                  <strong>¿Cómo obtener el código?</strong><br/>
-                  Pide al dueño que abra su Lumi App → Perfil de mascota → Carnet → Código de autorización.
+                  <strong>¿Cómo obtener el código?</strong><br/>Pide al dueño: Lumi App → Perfil mascota → Carnet → Código de autorización.
                 </div>
                 <div>
                   <label className="label">Código de autorización</label>
-                  <input className="input" value={carnetCode} onChange={e => { setCarnetCode(e.target.value.toUpperCase()); setCarnetError('') }}
-                    placeholder="Código del dueño" style={{ letterSpacing:'2px', fontFamily:'monospace', textAlign:'center', fontSize:16 }} />
+                  <input className="input" value={carnetCode} onChange={e => { setCarnetCode(e.target.value.toUpperCase()); setCarnetError('') }} placeholder="Código del dueño" style={{ letterSpacing:'2px', fontFamily:'monospace', textAlign:'center', fontSize:16 }} />
                   {carnetError && <p style={{ fontSize:12, color:'var(--red)', margin:'4px 0 0' }}>{carnetError}</p>}
                 </div>
                 <div style={{ display:'flex', gap:10 }}>
@@ -554,27 +425,13 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
             )}
             {carnetStep === 'form' && (
               <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-                <div style={{ background:'#DCFCE7', borderRadius:8, padding:'8px 12px', fontSize:12, color:'#15803D', fontWeight:600 }}>
-                  ✓ Código verificado — agrega la vacuna al carnet
-                </div>
-                <div>
-                  <label className="label">Nombre de la vacuna *</label>
-                  <input className="input" value={vaccineForm.name} onChange={e => setVaccineForm(f=>({...f,name:e.target.value}))} placeholder="Rabia, Moquillo, Parvovirus..." />
-                </div>
+                <div style={{ background:'#DCFCE7', borderRadius:8, padding:'8px 12px', fontSize:12, color:'#15803D', fontWeight:600 }}>✓ Código verificado — agrega la vacuna al carnet</div>
+                <div><label className="label">Nombre de la vacuna *</label><input className="input" value={vaccineForm.name} onChange={e => setVaccineForm(f=>({...f,name:e.target.value}))} placeholder="Rabia, Moquillo, Parvovirus..." /></div>
                 <div className="grid-2">
-                  <div>
-                    <label className="label">Fecha de aplicación *</label>
-                    <input className="input" type="date" value={vaccineForm.date} onChange={e => setVaccineForm(f=>({...f,date:e.target.value}))} />
-                  </div>
-                  <div>
-                    <label className="label">Fecha de refuerzo</label>
-                    <input className="input" type="date" value={vaccineForm.next_date} onChange={e => setVaccineForm(f=>({...f,next_date:e.target.value}))} />
-                  </div>
+                  <div><label className="label">Fecha de aplicación *</label><input className="input" type="date" value={vaccineForm.date} onChange={e => setVaccineForm(f=>({...f,date:e.target.value}))} /></div>
+                  <div><label className="label">Fecha de refuerzo</label><input className="input" type="date" value={vaccineForm.next_date} onChange={e => setVaccineForm(f=>({...f,next_date:e.target.value}))} /></div>
                 </div>
-                <div>
-                  <label className="label">Notas</label>
-                  <input className="input" value={vaccineForm.notes} onChange={e => setVaccineForm(f=>({...f,notes:e.target.value}))} placeholder="Laboratorio, lote, dosis..." />
-                </div>
+                <div><label className="label">Notas</label><input className="input" value={vaccineForm.notes} onChange={e => setVaccineForm(f=>({...f,notes:e.target.value}))} placeholder="Laboratorio, lote, dosis..." /></div>
                 <div style={{ display:'flex', gap:10 }}>
                   <button className="btn btn-secondary" onClick={() => setCarnetStep('code')} style={{ flex:1, justifyContent:'center' }}>Atrás</button>
                   <button className="btn btn-primary" onClick={saveVaccine} disabled={!vaccineForm.name || !vaccineForm.date} style={{ flex:2, justifyContent:'center' }}>Guardar en carnet</button>
@@ -585,7 +442,7 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
         </div>
       )}
 
-      {/* ===== MODAL NUEVO PACIENTE ===== */}
+      {/* MODAL NUEVO PACIENTE */}
       {showNew && (
         <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setShowNew(false)}>
           <div className="modal" style={{ maxWidth:540 }}>
@@ -595,20 +452,12 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
               <button onClick={() => setTab('regular')} style={{ flex:1, padding:'9px 0', fontSize:13, fontWeight:700, border:'none', cursor:'pointer', background: tab==='regular' ? '#6B21A8' : 'white', color: tab==='regular' ? 'white' : 'var(--text-secondary)' }}>👤 Paciente Regular</button>
             </div>
 
-            {/* Tab Lumi */}
             {tab === 'lumi' && (
               <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-                <p style={{ fontSize:13, color:'var(--text-secondary)', margin:0 }}>
-                  Ingresa el código Lumi del dueño (ej: <strong>LMI-2026-L1RD62</strong>) para cargar automáticamente los datos.
-                </p>
+                <p style={{ fontSize:13, color:'var(--text-secondary)', margin:0 }}>Ingresa el código Lumi del dueño (ej: <strong>LMI-2026-L1RD62</strong>) para cargar automáticamente los datos.</p>
                 <div style={{ display:'flex', gap:8 }}>
-                  <input className="input" value={lumiCode}
-                    onChange={e => { setLumiCode(e.target.value.toUpperCase()); setLumiError(''); setLumiSearch(null) }}
-                    placeholder="LMI-2026-XXXXXX" style={{ flex:1, fontFamily:'monospace', letterSpacing:'1px' }}
-                    onKeyDown={e => e.key==='Enter' && searchLumiCode()} />
-                  <button className="btn btn-primary" onClick={searchLumiCode} disabled={lumiLoading || !lumiCode.trim()}>
-                    {lumiLoading ? '...' : <><i className="ti ti-search" /> Buscar</>}
-                  </button>
+                  <input className="input" value={lumiCode} onChange={e => { setLumiCode(e.target.value.toUpperCase()); setLumiError(''); setLumiSearch(null) }} placeholder="LMI-2026-XXXXXX" style={{ flex:1, fontFamily:'monospace', letterSpacing:'1px' }} onKeyDown={e => e.key==='Enter' && searchLumiCode()} />
+                  <button className="btn btn-primary" onClick={searchLumiCode} disabled={lumiLoading || !lumiCode.trim()}>{lumiLoading ? '...' : <><i className="ti ti-search" /> Buscar</>}</button>
                 </div>
                 {lumiError && <p style={{ fontSize:13, color:'var(--red)', margin:0 }}>{lumiError}</p>}
                 {lumiSearch && (
@@ -629,70 +478,33 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
                         {lumiSearch.lastVisit.diagnosis && <> · {lumiSearch.lastVisit.diagnosis}</>}
                       </div>
                     )}
-                    <button className="btn btn-primary" onClick={registerLumiPatient} style={{ width:'100%', justifyContent:'center' }}>
-                      <i className="ti ti-user-plus" /> Registrar en mi clínica
-                    </button>
+                    <button className="btn btn-primary" onClick={registerLumiPatient} style={{ width:'100%', justifyContent:'center' }}><i className="ti ti-user-plus" /> Registrar en mi clínica</button>
                   </div>
                 )}
                 <button className="btn btn-secondary" onClick={() => setShowNew(false)} style={{ justifyContent:'center' }}>Cancelar</button>
               </div>
             )}
 
-            {/* Tab Regular */}
             {tab === 'regular' && (
               <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
                 <p style={{ fontSize:13, fontWeight:700, color:'var(--purple)', textTransform:'uppercase', letterSpacing:'0.5px', margin:0 }}>Datos del dueño</p>
                 <div className="grid-2">
-                  <div style={{ gridColumn:'1/-1' }}>
-                    <label className="label">Nombre completo *</label>
-                    <input className="input" value={newForm.owner_name} onChange={e => setNewForm(f=>({...f,owner_name:e.target.value}))} placeholder="Juan García" />
-                  </div>
-                  <div>
-                    <label className="label">Teléfono</label>
-                    <input className="input" value={newForm.owner_phone} onChange={e => setNewForm(f=>({...f,owner_phone:e.target.value}))} placeholder="9981234567" />
-                  </div>
-                  <div>
-                    <label className="label">Email</label>
-                    <input className="input" type="email" value={newForm.owner_email} onChange={e => setNewForm(f=>({...f,owner_email:e.target.value}))} placeholder="juan@email.com" />
-                  </div>
+                  <div style={{ gridColumn:'1/-1' }}><label className="label">Nombre completo *</label><input className="input" value={newForm.owner_name} onChange={e => setNewForm(f=>({...f,owner_name:e.target.value}))} placeholder="Juan García" /></div>
+                  <div><label className="label">Teléfono</label><input className="input" value={newForm.owner_phone} onChange={e => setNewForm(f=>({...f,owner_phone:e.target.value}))} placeholder="9981234567" /></div>
+                  <div><label className="label">Email</label><input className="input" type="email" value={newForm.owner_email} onChange={e => setNewForm(f=>({...f,owner_email:e.target.value}))} placeholder="juan@email.com" /></div>
                 </div>
                 <p style={{ fontSize:13, fontWeight:700, color:'var(--purple)', textTransform:'uppercase', letterSpacing:'0.5px', margin:'8px 0 0' }}>Datos de la mascota</p>
                 <div className="grid-2">
-                  <div style={{ gridColumn:'1/-1' }}>
-                    <label className="label">Nombre *</label>
-                    <input className="input" value={newForm.pet_name} onChange={e => setNewForm(f=>({...f,pet_name:e.target.value}))} placeholder="Max" />
-                  </div>
-                  <div>
-                    <label className="label">Especie</label>
-                    <select className="input" value={newForm.species} onChange={e => setNewForm(f=>({...f,species:e.target.value}))}>
-                      {['perro','gato','conejo','ave','reptil','otro'].map(s => <option key={s}>{s}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="label">Raza</label>
-                    <input className="input" value={newForm.breed} onChange={e => setNewForm(f=>({...f,breed:e.target.value}))} placeholder="Labrador..." />
-                  </div>
-                  <div>
-                    <label className="label">Género</label>
-                    <select className="input" value={newForm.gender} onChange={e => setNewForm(f=>({...f,gender:e.target.value}))}>
-                      <option value="macho">Macho</option>
-                      <option value="hembra">Hembra</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="label">Peso (kg)</label>
-                    <input className="input" type="number" step="0.1" value={newForm.weight} onChange={e => setNewForm(f=>({...f,weight:e.target.value}))} placeholder="5.0" />
-                  </div>
-                  <div style={{ gridColumn:'1/-1' }}>
-                    <label className="label">Notas</label>
-                    <textarea className="input" rows={2} value={newForm.notes} onChange={e => setNewForm(f=>({...f,notes:e.target.value}))} placeholder="Alergias, condiciones previas..." style={{ resize:'vertical' }} />
-                  </div>
+                  <div style={{ gridColumn:'1/-1' }}><label className="label">Nombre *</label><input className="input" value={newForm.pet_name} onChange={e => setNewForm(f=>({...f,pet_name:e.target.value}))} placeholder="Max" /></div>
+                  <div><label className="label">Especie</label><select className="input" value={newForm.species} onChange={e => setNewForm(f=>({...f,species:e.target.value}))}>{['perro','gato','conejo','ave','reptil','otro'].map(s => <option key={s}>{s}</option>)}</select></div>
+                  <div><label className="label">Raza</label><input className="input" value={newForm.breed} onChange={e => setNewForm(f=>({...f,breed:e.target.value}))} placeholder="Labrador..." /></div>
+                  <div><label className="label">Género</label><select className="input" value={newForm.gender} onChange={e => setNewForm(f=>({...f,gender:e.target.value}))}><option value="macho">Macho</option><option value="hembra">Hembra</option></select></div>
+                  <div><label className="label">Peso (kg)</label><input className="input" type="number" step="0.1" value={newForm.weight} onChange={e => setNewForm(f=>({...f,weight:e.target.value}))} placeholder="5.0" /></div>
+                  <div style={{ gridColumn:'1/-1' }}><label className="label">Notas</label><textarea className="input" rows={2} value={newForm.notes} onChange={e => setNewForm(f=>({...f,notes:e.target.value}))} placeholder="Alergias, condiciones previas..." style={{ resize:'vertical' }} /></div>
                 </div>
                 <div style={{ display:'flex', gap:10 }}>
                   <button className="btn btn-secondary" onClick={() => setShowNew(false)} style={{ flex:1, justifyContent:'center' }}>Cancelar</button>
-                  <button className="btn btn-primary" onClick={saveNewPatient}
-                    disabled={!newForm.owner_name.trim() || !newForm.pet_name.trim() || saving}
-                    style={{ flex:2, justifyContent:'center' }}>
+                  <button className="btn btn-primary" onClick={saveNewPatient} disabled={!newForm.owner_name.trim() || !newForm.pet_name.trim() || saving} style={{ flex:2, justifyContent:'center' }}>
                     {saving ? 'Guardando...' : 'Guardar paciente'}
                   </button>
                 </div>
