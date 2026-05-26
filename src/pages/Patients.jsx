@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
-export default function Patients({ clinic, openNew, onNavigateAppointment }) {
+const HOURS = ['08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30','18:00']
+
+export default function Patients({ clinic, openNew }) {
   const [tab, setTab]                       = useState('todos')
   const [lumiPatients, setLumiPatients]     = useState([])
   const [regularPatients, setRegularPatients] = useState([])
+  const [inventory, setInventory]           = useState([])
   const [search, setSearch]                 = useState('')
   const [selected, setSelected]             = useState(null)
   const [selectedType, setSelectedType]     = useState(null)
@@ -14,19 +17,37 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
   const [showNew, setShowNew]               = useState(openNew || false)
   const [showVisit, setShowVisit]           = useState(false)
   const [showCarnet, setShowCarnet]         = useState(false)
+  const [showAppt, setShowAppt]             = useState(false)
   const [pointsMsg, setPointsMsg]           = useState(null)
   const [saving, setSaving]                 = useState(false)
+
+  // Lumi search
   const [lumiCode, setLumiCode]             = useState('')
   const [lumiSearch, setLumiSearch]         = useState(null)
   const [lumiLoading, setLumiLoading]       = useState(false)
   const [lumiError, setLumiError]           = useState('')
+
+  // Carnet
   const [carnetCode, setCarnetCode]         = useState('')
   const [carnetError, setCarnetError]       = useState('')
   const [carnetStep, setCarnetStep]         = useState('code')
   const [vaccineForm, setVaccineForm]       = useState({ name:'', date:'', next_date:'', notes:'' })
-  const [visitForm, setVisitForm]           = useState({ type:'servicio', description:'', price:'' })
+
+  // Visita — servicios + productos múltiples
+  const [visitType, setVisitType]           = useState('servicio')
+  const [serviceDesc, setServiceDesc]       = useState('')
+  const [servicePrice, setServicePrice]     = useState('')
+  const [cartItems, setCartItems]           = useState([]) // [{inventory_id, name, qty, unit_price, unit}]
+  const [invSearch, setInvSearch]           = useState('')
+
+  // Consulta
   const [recordForm, setRecordForm]         = useState({ diagnosis:'', treatment:'', notes:'', weight:'', temperature:'', next_visit:'' })
-  const [newForm, setNewForm]               = useState({ owner_name:'', owner_phone:'', owner_email:'', pet_name:'', species:'perro', breed:'', weight:'', gender:'macho', notes:'' })
+
+  // Cita inline
+  const [apptForm, setApptForm]             = useState({ date: new Date().toISOString().slice(0,10), time:'09:00', notes:'', status:'confirmed', price:'' })
+
+  // Nuevo paciente regular
+  const [newForm, setNewForm]               = useState({ owner_name:'', owner_phone:'', owner_email:'', pet_name:'', pet_type:'perro', breed:'', weight:'', gender:'macho', notes:'' })
 
   useEffect(() => { fetchAll() }, [])
 
@@ -44,6 +65,14 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
       .eq('clinic_id', clinic.id)
     if (regErr) console.error('regular error:', regErr.message)
     setRegularPatients(regular || [])
+
+    const { data: inv } = await supabase
+      .from('vet_inventory')
+      .select('id,name,unit,sale_price,stock,category')
+      .eq('clinic_id', clinic.id)
+      .gt('stock', 0)
+      .order('name')
+    setInventory(inv || [])
   }
 
   const fetchLumiRecords = async (petId) => {
@@ -64,6 +93,7 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
   const selectLumi    = async (p) => { setSelected(p); setSelectedType('lumi');    await fetchLumiRecords(p.pet_id) }
   const selectRegular = async (p) => { setSelected(p); setSelectedType('regular'); await fetchRegularRecords(p.id) }
 
+  // Buscar Lumi
   const searchLumiCode = async () => {
     if (!lumiCode.trim()) return
     setLumiLoading(true); setLumiError(''); setLumiSearch(null)
@@ -85,60 +115,131 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
     fetchAll()
   }
 
+  // Guardar paciente regular
   const saveNewPatient = async () => {
     if (!newForm.owner_name.trim() || !newForm.pet_name.trim()) return
     setSaving(true)
     const { error } = await supabase.from('vet_regular_patients').insert({
       clinic_id: clinic.id, owner_name: newForm.owner_name.trim(), owner_phone: newForm.owner_phone.trim(),
-      owner_email: newForm.owner_email.trim(), pet_name: newForm.pet_name.trim(), species: newForm.species,
+      owner_email: newForm.owner_email.trim(), pet_name: newForm.pet_name.trim(), species: newForm.pet_type,
       breed: newForm.breed.trim(), gender: newForm.gender, weight: newForm.weight ? parseFloat(newForm.weight) : null, notes: newForm.notes.trim(),
     })
     setSaving(false)
     if (!error) {
       setShowNew(false)
-      setNewForm({ owner_name:'', owner_phone:'', owner_email:'', pet_name:'', species:'perro', breed:'', weight:'', gender:'macho', notes:'' })
+      setNewForm({ owner_name:'', owner_phone:'', owner_email:'', pet_name:'', pet_type:'perro', breed:'', weight:'', gender:'macho', notes:'' })
       fetchAll()
     }
   }
 
-  const saveLumiRecord = async () => {
-    const { data: record } = await supabase.from('vet_records').insert({
-      clinic_id: clinic.id, pet_id: selected.pet_id, date: new Date().toISOString().slice(0,10),
-      ...recordForm, weight: recordForm.weight ? parseFloat(recordForm.weight) : null, temperature: recordForm.temperature ? parseFloat(recordForm.temperature) : null,
-    }).select().single()
-    await supabase.from('vet_patients').update({ last_visit: new Date().toISOString().slice(0,10) }).eq('id', selected.id)
-    if (record && selected.pets?.lumi_id && selected.owner_id) {
-      await supabase.rpc('grant_visit_points', { p_clinic_id: clinic.id, p_owner_id: selected.owner_id, p_pet_id: selected.pet_id, p_record_id: record.id })
-      setPointsMsg(`+15 puntos otorgados a ${selected.profiles?.name || 'el dueño'} 🎉`)
-      setTimeout(() => setPointsMsg(null), 4000)
-    }
-    await fetchLumiRecords(selected.pet_id)
-    setShowRecord(false)
-    setRecordForm({ diagnosis:'', treatment:'', notes:'', weight:'', temperature:'', next_visit:'' })
-  }
-
-  const saveRegularRecord = async () => {
-    await supabase.from('vet_regular_records').insert({
-      clinic_id: clinic.id, regular_patient_id: selected.id, date: new Date().toISOString().slice(0,10),
-      ...recordForm, weight: recordForm.weight ? parseFloat(recordForm.weight) : null, temperature: recordForm.temperature ? parseFloat(recordForm.temperature) : null,
-    })
-    await supabase.from('vet_regular_patients').update({ last_visit: new Date().toISOString().slice(0,10) }).eq('id', selected.id)
-    await fetchRegularRecords(selected.id)
-    setShowRecord(false)
-    setRecordForm({ diagnosis:'', treatment:'', notes:'', weight:'', temperature:'', next_visit:'' })
-  }
-
-  const saveVisit = async () => {
+  // Guardar consulta
+  const saveRecord = async () => {
     if (selectedType === 'lumi') {
-      await supabase.from('vet_transactions').insert({ clinic_id: clinic.id, pet_id: selected.pet_id, owner_id: selected.owner_id, type: 'income', category: visitForm.type, description: visitForm.description, amount: visitForm.price ? parseFloat(visitForm.price) : 0, date: new Date().toISOString().slice(0,10) })
-      await supabase.from('vet_patients').update({ last_visit: new Date().toISOString().slice(0,10), visit_count: (selected.visit_count || 0) + 1 }).eq('id', selected.id)
+      const { data: record } = await supabase.from('vet_records').insert({
+        clinic_id: clinic.id, pet_id: selected.pet_id, date: new Date().toISOString().slice(0,10),
+        ...recordForm, weight: recordForm.weight ? parseFloat(recordForm.weight) : null,
+        temperature: recordForm.temperature ? parseFloat(recordForm.temperature) : null,
+      }).select().single()
+      await supabase.from('vet_patients').update({ last_visit: new Date().toISOString().slice(0,10) }).eq('id', selected.id)
+      if (record && selected.pets?.lumi_id && selected.owner_id) {
+        await supabase.rpc('grant_visit_points', { p_clinic_id: clinic.id, p_owner_id: selected.owner_id, p_pet_id: selected.pet_id, p_record_id: record.id })
+        setPointsMsg(`+15 puntos otorgados a ${selected.profiles?.name || 'el dueño'} 🎉`)
+        setTimeout(() => setPointsMsg(null), 4000)
+      }
+      await fetchLumiRecords(selected.pet_id)
     } else {
-      await supabase.from('vet_regular_records').insert({ clinic_id: clinic.id, regular_patient_id: selected.id, date: new Date().toISOString().slice(0,10), type: visitForm.type, description: visitForm.description, price: visitForm.price ? parseFloat(visitForm.price) : 0 })
-      await supabase.from('vet_regular_patients').update({ last_visit: new Date().toISOString().slice(0,10), visit_count: (selected.visit_count || 0) + 1 }).eq('id', selected.id)
+      await supabase.from('vet_regular_records').insert({
+        clinic_id: clinic.id, regular_patient_id: selected.id, date: new Date().toISOString().slice(0,10),
+        ...recordForm, weight: recordForm.weight ? parseFloat(recordForm.weight) : null,
+        temperature: recordForm.temperature ? parseFloat(recordForm.temperature) : null,
+      })
+      await supabase.from('vet_regular_patients').update({ last_visit: new Date().toISOString().slice(0,10) }).eq('id', selected.id)
+      await fetchRegularRecords(selected.id)
     }
-    setShowVisit(false); setVisitForm({ type:'servicio', description:'', price:'' }); fetchAll()
+    setShowRecord(false)
+    setRecordForm({ diagnosis:'', treatment:'', notes:'', weight:'', temperature:'', next_visit:'' })
   }
 
+  // Guardar visita (servicio o productos del inventario)
+  const saveVisit = async () => {
+    const today = new Date().toISOString().slice(0,10)
+    const patientId = selectedType === 'lumi' ? selected.pet_id : selected.id
+    const ownerId   = selectedType === 'lumi' ? selected.owner_id : null
+
+    if (visitType === 'servicio') {
+      if (selectedType === 'lumi') {
+        await supabase.from('vet_transactions').insert({ clinic_id: clinic.id, pet_id: patientId, owner_id: ownerId, type:'income', category:'servicio', description: serviceDesc, amount: servicePrice ? parseFloat(servicePrice) : 0, date: today })
+      } else {
+        await supabase.from('vet_regular_records').insert({ clinic_id: clinic.id, regular_patient_id: selected.id, date: today, type:'servicio', description: serviceDesc, price: servicePrice ? parseFloat(servicePrice) : 0 })
+      }
+    } else {
+      // Productos — descontar inventario y registrar cada uno
+      for (const item of cartItems) {
+        if (item.qty <= 0) continue
+        // Registrar transacción
+        if (selectedType === 'lumi') {
+          await supabase.from('vet_transactions').insert({ clinic_id: clinic.id, pet_id: patientId, owner_id: ownerId, type:'income', category:'producto', description: `${item.name} x${item.qty}`, amount: item.qty * item.unit_price, date: today })
+        } else {
+          await supabase.from('vet_regular_records').insert({ clinic_id: clinic.id, regular_patient_id: selected.id, date: today, type:'producto', description: `${item.name} x${item.qty}`, price: item.qty * item.unit_price })
+        }
+        // Descontar stock
+        const invItem = inventory.find(i => i.id === item.inventory_id)
+        if (invItem) {
+          await supabase.from('vet_inventory').update({ stock: Math.max(0, invItem.stock - item.qty) }).eq('id', item.inventory_id)
+        }
+      }
+    }
+
+    // Actualizar última visita y contador
+    if (selectedType === 'lumi') {
+      await supabase.from('vet_patients').update({ last_visit: today, visit_count: (selected.visit_count || 0) + 1 }).eq('id', selected.id)
+    } else {
+      await supabase.from('vet_regular_patients').update({ last_visit: today, visit_count: (selected.visit_count || 0) + 1 }).eq('id', selected.id)
+    }
+
+    setShowVisit(false)
+    setServiceDesc(''); setServicePrice(''); setCartItems([]); setInvSearch('')
+    fetchAll()
+  }
+
+  // Agregar producto al carrito
+  const addToCart = (item) => {
+    setCartItems(prev => {
+      const existing = prev.find(c => c.inventory_id === item.id)
+      if (existing) return prev.map(c => c.inventory_id === item.id ? { ...c, qty: c.qty + 1 } : c)
+      return [...prev, { inventory_id: item.id, name: item.name, qty: 1, unit_price: item.sale_price || 0, unit: item.unit }]
+    })
+  }
+
+  const updateQty = (inventoryId, qty) => {
+    if (qty <= 0) { setCartItems(prev => prev.filter(c => c.inventory_id !== inventoryId)); return }
+    setCartItems(prev => prev.map(c => c.inventory_id === inventoryId ? { ...c, qty } : c))
+  }
+
+  const cartTotal = cartItems.reduce((sum, c) => sum + c.qty * c.unit_price, 0)
+
+  // Guardar cita inline
+  const saveAppt = async () => {
+    const petName   = selectedType === 'lumi' ? selected.pets?.name    : selected.pet_name
+    const ownerName = selectedType === 'lumi' ? selected.profiles?.name : selected.owner_name
+    await supabase.from('vet_appointments').insert({
+      clinic_id:  clinic.id,
+      pet_id:     selectedType === 'lumi' ? selected.pet_id : null,
+      pet_name:   petName,
+      owner_name: ownerName,
+      date:       apptForm.date,
+      time:       apptForm.time,
+      notes:      apptForm.notes,
+      status:     apptForm.status,
+      price:      apptForm.price ? parseFloat(apptForm.price) : null,
+    })
+    setShowAppt(false)
+    setApptForm({ date: new Date().toISOString().slice(0,10), time:'09:00', notes:'', status:'confirmed', price:'' })
+    setPointsMsg('✅ Cita agendada correctamente')
+    setTimeout(() => setPointsMsg(null), 3000)
+  }
+
+  // Carnet
   const verifyCarnetCode = async () => {
     setCarnetError('')
     const { data } = await supabase.from('vet_auth_codes').select('*').eq('pet_id', selected.pet_id).eq('code', carnetCode.trim().toUpperCase()).maybeSingle()
@@ -169,29 +270,26 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
     return matchSearch && p._type === (tab === 'lumi' ? 'lumi' : 'regular')
   })
 
+  const filteredInv = inventory.filter(i => i.name.toLowerCase().includes(invSearch.toLowerCase()))
   const petName    = selectedType === 'lumi' ? selected?.pets?.name      : selected?.pet_name
   const ownerName  = selectedType === 'lumi' ? selected?.profiles?.name  : selected?.owner_name
   const ownerPhone = selectedType === 'lumi' ? selected?.profiles?.phone : selected?.owner_phone
   const ownerEmail = selectedType === 'lumi' ? selected?.profiles?.email : selected?.owner_email
 
   return (
-    <div style={{ display:'grid', gridTemplateColumns: selected ? '340px 1fr' : '1fr', gap:20 }}>
+    <div style={{ display:'grid', gridTemplateColumns: selected ? '320px 1fr' : '1fr', gap:20 }}>
 
       {/* LISTA */}
       <div>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
           <p style={{ fontSize:20, fontWeight:800, margin:0 }}>Pacientes <span style={{ fontSize:14, color:'var(--text-muted)', fontWeight:500 }}>({allPatients.length})</span></p>
-          <button className="btn btn-primary" onClick={() => setShowNew(true)}><i className="ti ti-plus" /> Nuevo paciente</button>
+          <button className="btn btn-primary" onClick={() => setShowNew(true)}><i className="ti ti-plus" /> Nuevo</button>
         </div>
 
         {pointsMsg && <div style={{ background:'#DCFCE7', border:'1px solid #16A34A', borderRadius:10, padding:'10px 14px', marginBottom:12, fontSize:13, color:'#15803D', fontWeight:600 }}>{pointsMsg}</div>}
 
         <div style={{ display:'flex', marginBottom:14, border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
-          {[
-            { key:'todos',   label:`Todos (${allPatients.length})` },
-            { key:'lumi',    label:`🐾 Lumi (${lumiPatients.length})` },
-            { key:'regular', label:`👤 Regular (${regularPatients.length})` },
-          ].map(t => (
+          {[{key:'todos',label:`Todos (${allPatients.length})`},{key:'lumi',label:`🐾 Lumi (${lumiPatients.length})`},{key:'regular',label:`👤 Regular (${regularPatients.length})`}].map(t => (
             <button key={t.key} onClick={() => { setTab(t.key); setSelected(null) }}
               style={{ flex:1, padding:'9px 0', fontSize:12, fontWeight:700, border:'none', cursor:'pointer', background: tab===t.key ? '#6B21A8' : 'white', color: tab===t.key ? 'white' : 'var(--text-secondary)' }}>
               {t.label}
@@ -199,7 +297,7 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
           ))}
         </div>
 
-        <input className="input" style={{ marginBottom:12 }} value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Buscar mascota o dueño..." />
+        <input className="input" style={{ marginBottom:12 }} value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Buscar..." />
 
         <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
           {filteredAll.map(p => {
@@ -259,16 +357,13 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
             <button className="btn btn-icon" style={{ background:'var(--bg)' }} onClick={() => setSelected(null)}><i className="ti ti-x" /></button>
           </div>
 
-          {/* Botones acción */}
+          {/* Botones */}
           <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap' }}>
-            <button className="btn btn-primary btn-sm" onClick={() => setShowVisit(true)}><i className="ti ti-plus" /> + Visita</button>
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowRecord(true)}><i className="ti ti-file-plus" /> Nueva consulta</button>
-            <button className="btn btn-secondary btn-sm" onClick={() => onNavigateAppointment && onNavigateAppointment({ pet_name: petName, owner_name: ownerName || '' })}>
-              <i className="ti ti-calendar-plus" /> Agendar cita
-            </button>
+            <button className="btn btn-primary btn-sm" onClick={() => { setShowVisit(true); setVisitType('servicio'); setCartItems([]); setServiceDesc(''); setServicePrice('') }}><i className="ti ti-plus" /> + Visita</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowRecord(true)}><i className="ti ti-file-plus" /> Consulta</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowAppt(true)}><i className="ti ti-calendar-plus" /> Agendar cita</button>
             {selectedType === 'lumi' && (
-              <button className="btn btn-secondary btn-sm" style={{ color:'var(--purple)', borderColor:'var(--purple)' }}
-                onClick={() => { setShowCarnet(true); setCarnetStep('code'); setCarnetCode(''); setCarnetError('') }}>
+              <button className="btn btn-secondary btn-sm" style={{ color:'var(--purple)', borderColor:'var(--purple)' }} onClick={() => { setShowCarnet(true); setCarnetStep('code'); setCarnetCode(''); setCarnetError('') }}>
                 <i className="ti ti-certificate" /> Actualizar carnet
               </button>
             )}
@@ -282,14 +377,10 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
               <span style={{ fontSize:13 }}><i className="ti ti-phone" style={{ color:'var(--purple)' }} /> {ownerPhone || '—'}</span>
               {ownerEmail && <span style={{ fontSize:13 }}><i className="ti ti-mail" style={{ color:'var(--purple)' }} /> {ownerEmail}</span>}
             </div>
-            {selectedType === 'lumi' && (
-              <div style={{ marginTop:10, padding:'7px 12px', background:'#EDE9FE', borderRadius:8, fontSize:12, color:'#6B21A8', fontWeight:600 }}>
-                🐾 Código Lumi: {selected.pets?.lumi_id} · Consulta otorgará +15 puntos
-              </div>
-            )}
+            {selectedType === 'lumi' && <div style={{ marginTop:10, padding:'7px 12px', background:'#EDE9FE', borderRadius:8, fontSize:12, color:'#6B21A8', fontWeight:600 }}>🐾 {selected.pets?.lumi_id} · Consulta otorgará +15 puntos</div>}
           </div>
 
-          {/* Carnet vacunas */}
+          {/* Carnet */}
           {selectedType === 'lumi' && (
             <div className="card" style={{ marginBottom:14 }}>
               <p style={{ fontSize:13, fontWeight:800, margin:'0 0 12px' }}>💉 Carnet de vacunas</p>
@@ -297,10 +388,7 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
                 <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                   {vaccines.map(v => (
                     <div key={v.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 12px', background:'var(--bg)', borderRadius:8 }}>
-                      <div>
-                        <p style={{ fontSize:13, fontWeight:700, margin:'0 0 2px' }}>{v.name}</p>
-                        {v.notes && <p style={{ fontSize:11, color:'var(--text-muted)', margin:0 }}>{v.notes}</p>}
-                      </div>
+                      <div><p style={{ fontSize:13, fontWeight:700, margin:'0 0 2px' }}>{v.name}</p>{v.notes && <p style={{ fontSize:11, color:'var(--text-muted)', margin:0 }}>{v.notes}</p>}</div>
                       <div style={{ textAlign:'right' }}>
                         <p style={{ fontSize:11, color:'var(--text-secondary)', margin:'0 0 2px' }}>{v.date ? new Date(v.date+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'short',year:'numeric'}) : '—'}</p>
                         {v.next_date && <p style={{ fontSize:11, color:'var(--purple)', fontWeight:600, margin:0 }}>Refuerzo: {new Date(v.next_date+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'short'})}</p>}
@@ -318,7 +406,7 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
             {records.length === 0 ? <p style={{ color:'var(--text-muted)', textAlign:'center', padding:'20px 0' }}>Sin consultas registradas</p> : (
               <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
                 {records.map(r => (
-                  <div key={r.id} style={{ padding:'14px', background:'var(--bg)', borderRadius:12, borderLeft:`3px solid ${r.type==='servicio' ? '#D97706' : r.type==='producto' ? '#16A34A' : 'var(--purple)'}` }}>
+                  <div key={r.id} style={{ padding:'14px', background:'var(--bg)', borderRadius:12, borderLeft:`3px solid ${r.type==='servicio'?'#D97706':r.type==='producto'?'#16A34A':'var(--purple)'}` }}>
                     <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
                       <p style={{ fontSize:13, fontWeight:700, margin:0 }}>{new Date(r.date+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'long',year:'numeric'})}</p>
                       <div style={{ display:'flex', gap:8 }}>
@@ -344,31 +432,109 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
       {/* MODAL + VISITA */}
       {showVisit && (
         <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setShowVisit(false)}>
-          <div className="modal">
-            <p style={{ fontSize:17, fontWeight:800, margin:'0 0 20px' }}>+ Visita — {petName}</p>
-            <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-              <div>
-                <label className="label">Tipo de visita</label>
-                <div style={{ display:'flex', gap:8 }}>
-                  {['servicio','producto'].map(t => (
-                    <button key={t} onClick={() => setVisitForm(f=>({...f,type:t}))}
-                      style={{ flex:1, padding:'10px', borderRadius:8, border:`2px solid ${visitForm.type===t ? '#6B21A8' : 'var(--border)'}`, background: visitForm.type===t ? '#EDE9FE' : 'white', cursor:'pointer', fontWeight:700, fontSize:13, color: visitForm.type===t ? '#6B21A8' : 'var(--text-secondary)' }}>
-                      {t === 'servicio' ? '🛠 Servicio' : '📦 Producto'}
-                    </button>
+          <div className="modal" style={{ maxWidth:560 }}>
+            <p style={{ fontSize:17, fontWeight:800, margin:'0 0 16px' }}>+ Visita — {petName}</p>
+
+            {/* Tipo */}
+            <div style={{ display:'flex', gap:8, marginBottom:16 }}>
+              {['servicio','producto'].map(t => (
+                <button key={t} onClick={() => setVisitType(t)}
+                  style={{ flex:1, padding:'10px', borderRadius:8, border:`2px solid ${visitType===t?'#6B21A8':'var(--border)'}`, background: visitType===t?'#EDE9FE':'white', cursor:'pointer', fontWeight:700, fontSize:13, color: visitType===t?'#6B21A8':'var(--text-secondary)' }}>
+                  {t==='servicio' ? '🛠 Servicio' : '📦 Producto del inventario'}
+                </button>
+              ))}
+            </div>
+
+            {visitType === 'servicio' && (
+              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+                <div><label className="label">Descripción *</label><input className="input" value={serviceDesc} onChange={e => setServiceDesc(e.target.value)} placeholder="Consulta, baño, vacuna..." /></div>
+                <div><label className="label">Precio</label><input className="input" type="number" value={servicePrice} onChange={e => setServicePrice(e.target.value)} placeholder="0.00" /></div>
+              </div>
+            )}
+
+            {visitType === 'producto' && (
+              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+                <input className="input" value={invSearch} onChange={e => setInvSearch(e.target.value)} placeholder="🔍 Buscar producto del inventario..." />
+
+                {/* Lista de inventario */}
+                <div style={{ maxHeight:200, overflowY:'auto', display:'flex', flexDirection:'column', gap:6 }}>
+                  {filteredInv.length === 0 ? (
+                    <p style={{ fontSize:13, color:'var(--text-muted)', textAlign:'center', padding:'12px 0' }}>Sin productos en inventario</p>
+                  ) : filteredInv.map(item => (
+                    <div key={item.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 12px', background:'var(--bg)', borderRadius:8 }}>
+                      <div>
+                        <p style={{ fontSize:13, fontWeight:600, margin:'0 0 2px' }}>{item.name}</p>
+                        <p style={{ fontSize:11, color:'var(--text-muted)', margin:0 }}>{item.unit} · Stock: {item.stock} · ${item.sale_price || 0}</p>
+                      </div>
+                      <button className="btn btn-primary btn-sm" onClick={() => addToCart(item)} style={{ flexShrink:0 }}>+ Agregar</button>
+                    </div>
                   ))}
+                </div>
+
+                {/* Carrito */}
+                {cartItems.length > 0 && (
+                  <div style={{ border:'1px solid var(--border)', borderRadius:10, padding:12 }}>
+                    <p style={{ fontSize:13, fontWeight:700, margin:'0 0 10px' }}>🛒 Productos seleccionados</p>
+                    {cartItems.map(c => (
+                      <div key={c.inventory_id} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+                        <p style={{ fontSize:13, flex:1, margin:0 }}>{c.name}</p>
+                        <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                          <button onClick={() => updateQty(c.inventory_id, c.qty - 1)} style={{ width:24, height:24, borderRadius:6, border:'1px solid var(--border)', background:'white', cursor:'pointer', fontWeight:700 }}>−</button>
+                          <span style={{ fontSize:13, fontWeight:700, minWidth:20, textAlign:'center' }}>{c.qty}</span>
+                          <button onClick={() => updateQty(c.inventory_id, c.qty + 1)} style={{ width:24, height:24, borderRadius:6, border:'1px solid var(--border)', background:'white', cursor:'pointer', fontWeight:700 }}>+</button>
+                        </div>
+                        <p style={{ fontSize:13, fontWeight:700, color:'var(--purple)', margin:0, minWidth:60, textAlign:'right' }}>${(c.qty * c.unit_price).toFixed(2)}</p>
+                      </div>
+                    ))}
+                    <div style={{ borderTop:'1px solid var(--border)', marginTop:8, paddingTop:8, display:'flex', justifyContent:'space-between' }}>
+                      <p style={{ fontSize:13, fontWeight:700, margin:0 }}>Total</p>
+                      <p style={{ fontSize:15, fontWeight:900, color:'var(--purple)', margin:0 }}>${cartTotal.toFixed(2)}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div style={{ display:'flex', gap:10, marginTop:16 }}>
+              <button className="btn btn-secondary" onClick={() => setShowVisit(false)} style={{ flex:1, justifyContent:'center' }}>Cancelar</button>
+              <button className="btn btn-primary" onClick={saveVisit}
+                disabled={visitType==='servicio' ? !serviceDesc : cartItems.length === 0}
+                style={{ flex:2, justifyContent:'center' }}>
+                Registrar visita {visitType==='producto' && cartItems.length > 0 ? `· $${cartTotal.toFixed(2)}` : ''}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL AGENDAR CITA INLINE */}
+      {showAppt && (
+        <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setShowAppt(false)}>
+          <div className="modal">
+            <p style={{ fontSize:17, fontWeight:800, margin:'0 0 6px' }}>📅 Agendar cita</p>
+            <p style={{ fontSize:13, color:'var(--text-secondary)', margin:'0 0 20px' }}>{petName} · {ownerName}</p>
+            <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+              <div className="grid-2">
+                <div><label className="label">Fecha *</label><input className="input" type="date" value={apptForm.date} onChange={e => setApptForm(f=>({...f,date:e.target.value}))} /></div>
+                <div>
+                  <label className="label">Hora *</label>
+                  <select className="input" value={apptForm.time} onChange={e => setApptForm(f=>({...f,time:e.target.value}))}>
+                    {HOURS.map(h => <option key={h}>{h}</option>)}
+                  </select>
                 </div>
               </div>
               <div>
-                <label className="label">Descripción *</label>
-                <input className="input" value={visitForm.description} onChange={e => setVisitForm(f=>({...f,description:e.target.value}))} placeholder={visitForm.type==='servicio' ? 'Consulta, vacuna, cirugía...' : 'Alimento, medicamento, accesorio...'} />
+                <label className="label">Estado</label>
+                <select className="input" value={apptForm.status} onChange={e => setApptForm(f=>({...f,status:e.target.value}))}>
+                  <option value="confirmed">Confirmada</option>
+                  <option value="pending">Pendiente</option>
+                </select>
               </div>
-              <div>
-                <label className="label">Precio</label>
-                <input className="input" type="number" value={visitForm.price} onChange={e => setVisitForm(f=>({...f,price:e.target.value}))} placeholder="0.00" />
-              </div>
+              <div><label className="label">Motivo</label><input className="input" value={apptForm.notes} onChange={e => setApptForm(f=>({...f,notes:e.target.value}))} placeholder="Consulta, vacuna, revisión..." /></div>
+              <div><label className="label">Precio (opcional)</label><input className="input" type="number" value={apptForm.price} onChange={e => setApptForm(f=>({...f,price:e.target.value}))} placeholder="0.00" /></div>
               <div style={{ display:'flex', gap:10 }}>
-                <button className="btn btn-secondary" onClick={() => setShowVisit(false)} style={{ flex:1, justifyContent:'center' }}>Cancelar</button>
-                <button className="btn btn-primary" onClick={saveVisit} disabled={!visitForm.description} style={{ flex:2, justifyContent:'center' }}>Registrar visita</button>
+                <button className="btn btn-secondary" onClick={() => setShowAppt(false)} style={{ flex:1, justifyContent:'center' }}>Cancelar</button>
+                <button className="btn btn-primary" onClick={saveAppt} style={{ flex:2, justifyContent:'center' }}>Guardar cita</button>
               </div>
             </div>
           </div>
@@ -392,9 +558,7 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
               <div><label className="label">Próxima visita</label><input className="input" type="date" value={recordForm.next_visit} onChange={e => setRecordForm(f=>({...f,next_visit:e.target.value}))} /></div>
               <div style={{ display:'flex', gap:10 }}>
                 <button className="btn btn-secondary" onClick={() => setShowRecord(false)} style={{ flex:1, justifyContent:'center' }}>Cancelar</button>
-                <button className="btn btn-primary" onClick={selectedType==='lumi' ? saveLumiRecord : saveRegularRecord} style={{ flex:2, justifyContent:'center' }}>
-                  Guardar consulta {selectedType==='lumi' ? '(+15 pts)' : ''}
-                </button>
+                <button className="btn btn-primary" onClick={saveRecord} style={{ flex:2, justifyContent:'center' }}>Guardar consulta {selectedType==='lumi'?'(+15 pts)':''}</button>
               </div>
             </div>
           </div>
@@ -425,7 +589,7 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
             )}
             {carnetStep === 'form' && (
               <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-                <div style={{ background:'#DCFCE7', borderRadius:8, padding:'8px 12px', fontSize:12, color:'#15803D', fontWeight:600 }}>✓ Código verificado — agrega la vacuna al carnet</div>
+                <div style={{ background:'#DCFCE7', borderRadius:8, padding:'8px 12px', fontSize:12, color:'#15803D', fontWeight:600 }}>✓ Código verificado</div>
                 <div><label className="label">Nombre de la vacuna *</label><input className="input" value={vaccineForm.name} onChange={e => setVaccineForm(f=>({...f,name:e.target.value}))} placeholder="Rabia, Moquillo, Parvovirus..." /></div>
                 <div className="grid-2">
                   <div><label className="label">Fecha de aplicación *</label><input className="input" type="date" value={vaccineForm.date} onChange={e => setVaccineForm(f=>({...f,date:e.target.value}))} /></div>
@@ -448,13 +612,13 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
           <div className="modal" style={{ maxWidth:540 }}>
             <p style={{ fontSize:17, fontWeight:800, margin:'0 0 16px' }}>Nuevo paciente</p>
             <div style={{ display:'flex', marginBottom:20, border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
-              <button onClick={() => setTab('lumi')} style={{ flex:1, padding:'9px 0', fontSize:13, fontWeight:700, border:'none', cursor:'pointer', background: tab==='lumi' ? '#6B21A8' : 'white', color: tab==='lumi' ? 'white' : 'var(--text-secondary)' }}>🐾 Paciente Lumi</button>
-              <button onClick={() => setTab('regular')} style={{ flex:1, padding:'9px 0', fontSize:13, fontWeight:700, border:'none', cursor:'pointer', background: tab==='regular' ? '#6B21A8' : 'white', color: tab==='regular' ? 'white' : 'var(--text-secondary)' }}>👤 Paciente Regular</button>
+              <button onClick={() => setTab('lumi')} style={{ flex:1, padding:'9px 0', fontSize:13, fontWeight:700, border:'none', cursor:'pointer', background: tab==='lumi'?'#6B21A8':'white', color: tab==='lumi'?'white':'var(--text-secondary)' }}>🐾 Paciente Lumi</button>
+              <button onClick={() => setTab('regular')} style={{ flex:1, padding:'9px 0', fontSize:13, fontWeight:700, border:'none', cursor:'pointer', background: tab==='regular'?'#6B21A8':'white', color: tab==='regular'?'white':'var(--text-secondary)' }}>👤 Paciente Regular</button>
             </div>
 
             {tab === 'lumi' && (
               <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-                <p style={{ fontSize:13, color:'var(--text-secondary)', margin:0 }}>Ingresa el código Lumi del dueño (ej: <strong>LMI-2026-L1RD62</strong>) para cargar automáticamente los datos.</p>
+                <p style={{ fontSize:13, color:'var(--text-secondary)', margin:0 }}>Ingresa el código Lumi (ej: <strong>LMI-2026-L1RD62</strong>)</p>
                 <div style={{ display:'flex', gap:8 }}>
                   <input className="input" value={lumiCode} onChange={e => { setLumiCode(e.target.value.toUpperCase()); setLumiError(''); setLumiSearch(null) }} placeholder="LMI-2026-XXXXXX" style={{ flex:1, fontFamily:'monospace', letterSpacing:'1px' }} onKeyDown={e => e.key==='Enter' && searchLumiCode()} />
                   <button className="btn btn-primary" onClick={searchLumiCode} disabled={lumiLoading || !lumiCode.trim()}>{lumiLoading ? '...' : <><i className="ti ti-search" /> Buscar</>}</button>
@@ -475,7 +639,6 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
                     {lumiSearch.lastVisit && (
                       <div style={{ background:'white', borderRadius:8, padding:'8px 12px', fontSize:12, color:'var(--text-secondary)', marginBottom:12 }}>
                         <strong>Última visita aquí:</strong> {new Date(lumiSearch.lastVisit.date+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'long',year:'numeric'})}
-                        {lumiSearch.lastVisit.diagnosis && <> · {lumiSearch.lastVisit.diagnosis}</>}
                       </div>
                     )}
                     <button className="btn btn-primary" onClick={registerLumiPatient} style={{ width:'100%', justifyContent:'center' }}><i className="ti ti-user-plus" /> Registrar en mi clínica</button>
@@ -496,7 +659,7 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
                 <p style={{ fontSize:13, fontWeight:700, color:'var(--purple)', textTransform:'uppercase', letterSpacing:'0.5px', margin:'8px 0 0' }}>Datos de la mascota</p>
                 <div className="grid-2">
                   <div style={{ gridColumn:'1/-1' }}><label className="label">Nombre *</label><input className="input" value={newForm.pet_name} onChange={e => setNewForm(f=>({...f,pet_name:e.target.value}))} placeholder="Max" /></div>
-                  <div><label className="label">Especie</label><select className="input" value={newForm.species} onChange={e => setNewForm(f=>({...f,species:e.target.value}))}>{['perro','gato','conejo','ave','reptil','otro'].map(s => <option key={s}>{s}</option>)}</select></div>
+                  <div><label className="label">Tipo</label><select className="input" value={newForm.pet_type} onChange={e => setNewForm(f=>({...f,pet_type:e.target.value}))}>{['perro','gato','conejo','ave','reptil','otro'].map(s => <option key={s}>{s}</option>)}</select></div>
                   <div><label className="label">Raza</label><input className="input" value={newForm.breed} onChange={e => setNewForm(f=>({...f,breed:e.target.value}))} placeholder="Labrador..." /></div>
                   <div><label className="label">Género</label><select className="input" value={newForm.gender} onChange={e => setNewForm(f=>({...f,gender:e.target.value}))}><option value="macho">Macho</option><option value="hembra">Hembra</option></select></div>
                   <div><label className="label">Peso (kg)</label><input className="input" type="number" step="0.1" value={newForm.weight} onChange={e => setNewForm(f=>({...f,weight:e.target.value}))} placeholder="5.0" /></div>
@@ -504,9 +667,7 @@ export default function Patients({ clinic, openNew, onNavigateAppointment }) {
                 </div>
                 <div style={{ display:'flex', gap:10 }}>
                   <button className="btn btn-secondary" onClick={() => setShowNew(false)} style={{ flex:1, justifyContent:'center' }}>Cancelar</button>
-                  <button className="btn btn-primary" onClick={saveNewPatient} disabled={!newForm.owner_name.trim() || !newForm.pet_name.trim() || saving} style={{ flex:2, justifyContent:'center' }}>
-                    {saving ? 'Guardando...' : 'Guardar paciente'}
-                  </button>
+                  <button className="btn btn-primary" onClick={saveNewPatient} disabled={!newForm.owner_name.trim() || !newForm.pet_name.trim() || saving} style={{ flex:2, justifyContent:'center' }}>{saving ? 'Guardando...' : 'Guardar paciente'}</button>
                 </div>
               </div>
             )}
