@@ -1,31 +1,83 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
-const CATS = ['Todos','medicamento','vacuna','insumo','producto']
+const CATS = ['Todos','medicamento','vacuna','insumo','producto','alimento','juguete','accesorio']
+const UNITS = ['pieza','caja','frasco','ml','kg','tableta','bolsa','lata','sobre']
 
 export default function Inventory({ clinic }) {
-  const [items, setItems]     = useState([])
-  const [cat, setCat]         = useState('Todos')
-  const [search, setSearch]   = useState('')
+  const [items, setItems]         = useState([])
+  const [cat, setCat]             = useState('Todos')
+  const [search, setSearch]       = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editItem, setEditItem]   = useState(null)
-  const [form, setForm] = useState({ name:'', category:'medicamento', brand:'', unit:'pieza', stock:'', min_stock:'5', cost_price:'', sale_price:'', expiry_date:'', supplier:'', notes:'' })
+  const [saving, setSaving]       = useState(false)
+  const emptyForm = { name:'', category:'medicamento', brand:'', unit:'pieza', stock:'', min_stock:'5', cost_price:'', sale_price:'', expiry_date:'', supplier:'', notes:'' }
+  const [form, setForm] = useState(emptyForm)
 
   useEffect(() => { fetchItems() }, [])
 
   const fetchItems = async () => {
-    const { data } = await supabase.from('vet_inventory').select('*').eq('clinic_id', clinic.id).order('name')
+    const { data, error } = await supabase
+      .from('vet_inventory')
+      .select('*')
+      .eq('clinic_id', clinic.id)
+      .order('name')
+    if (error) console.error('inventory error:', error.message)
     setItems(data || [])
   }
 
-  const openAdd = () => { setEditItem(null); setForm({ name:'', category:'medicamento', brand:'', unit:'pieza', stock:'', min_stock:'5', cost_price:'', sale_price:'', expiry_date:'', supplier:'', notes:'' }); setShowModal(true) }
-  const openEdit = (item) => { setEditItem(item); setForm({...item, stock:String(item.stock||''), min_stock:String(item.min_stock||''), cost_price:String(item.cost_price||''), sale_price:String(item.sale_price||'') }); setShowModal(true) }
+  const openAdd  = () => { setEditItem(null); setForm(emptyForm); setShowModal(true) }
+  const openEdit = (item) => {
+    setEditItem(item)
+    setForm({
+      name:        item.name        || '',
+      category:    item.category    || 'medicamento',
+      brand:       item.brand       || '',
+      unit:        item.unit        || 'pieza',
+      stock:       String(item.stock    ?? ''),
+      min_stock:   String(item.min_stock ?? '5'),
+      cost_price:  String(item.cost_price ?? ''),
+      sale_price:  String(item.sale_price ?? ''),
+      expiry_date: item.expiry_date || '',
+      supplier:    item.supplier    || '',
+      notes:       item.notes       || '',
+    })
+    setShowModal(true)
+  }
 
   const saveItem = async () => {
-    const payload = { ...form, stock: parseFloat(form.stock)||0, min_stock: parseFloat(form.min_stock)||0, cost_price: parseFloat(form.cost_price)||null, sale_price: parseFloat(form.sale_price)||null, clinic_id: clinic.id, updated_at: new Date().toISOString() }
-    if (editItem) await supabase.from('vet_inventory').update(payload).eq('id', editItem.id)
-    else await supabase.from('vet_inventory').insert(payload)
-    fetchItems(); setShowModal(false)
+    if (!form.name.trim()) return
+    setSaving(true)
+
+    const payload = {
+      clinic_id:   clinic.id,
+      name:        form.name.trim(),
+      category:    form.category,
+      brand:       form.brand.trim(),
+      unit:        form.unit,
+      stock:       parseFloat(form.stock)      || 0,
+      min_stock:   parseFloat(form.min_stock)  || 0,
+      cost_price:  form.cost_price  ? parseFloat(form.cost_price)  : null,
+      sale_price:  form.sale_price  ? parseFloat(form.sale_price)  : null,
+      expiry_date: form.expiry_date || null,
+      supplier:    form.supplier.trim() || null,
+      notes:       form.notes.trim()    || null,
+      updated_at:  new Date().toISOString(),
+    }
+
+    let error
+    if (editItem) {
+      const res = await supabase.from('vet_inventory').update(payload).eq('id', editItem.id)
+      error = res.error
+    } else {
+      const res = await supabase.from('vet_inventory').insert(payload)
+      error = res.error
+    }
+
+    setSaving(false)
+    if (error) { console.error('save error:', error.message); return }
+    fetchItems()
+    setShowModal(false)
   }
 
   const deleteItem = async (id) => {
@@ -51,11 +103,10 @@ export default function Inventory({ clinic }) {
         <button className="btn btn-primary" onClick={openAdd}><i className="ti ti-plus" /> Agregar producto</button>
       </div>
 
-      {/* Filtros */}
       <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap' }}>
         <input className="input" style={{ maxWidth:260 }} value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Buscar..." />
         {CATS.map(c => (
-          <button key={c} className={`btn ${cat === c ? 'btn-primary' : 'btn-secondary'} btn-sm`} onClick={() => setCat(c)} style={{ textTransform:'capitalize' }}>{c}</button>
+          <button key={c} className={`btn ${cat===c?'btn-primary':'btn-secondary'} btn-sm`} onClick={() => setCat(c)} style={{ textTransform:'capitalize' }}>{c}</button>
         ))}
       </div>
 
@@ -88,7 +139,7 @@ export default function Inventory({ clinic }) {
                   </td>
                   <td><span className="badge badge-purple" style={{ textTransform:'capitalize' }}>{item.category}</span></td>
                   <td>
-                    <span className={`badge ${item.stock <= item.min_stock ? 'badge-red' : item.stock <= item.min_stock * 2 ? 'badge-amber' : 'badge-green'}`}>
+                    <span className={`badge ${item.stock<=item.min_stock?'badge-red':item.stock<=item.min_stock*2?'badge-amber':'badge-green'}`}>
                       {item.stock} {item.unit}
                     </span>
                   </td>
@@ -111,7 +162,7 @@ export default function Inventory({ clinic }) {
       </div>
 
       {showModal && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowModal(false)}>
+        <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setShowModal(false)}>
           <div className="modal">
             <p style={{ fontSize:17, fontWeight:800, margin:'0 0 20px' }}>{editItem ? 'Editar producto' : 'Nuevo producto'}</p>
             <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
@@ -123,13 +174,13 @@ export default function Inventory({ clinic }) {
                 <div>
                   <label className="label">Categoría</label>
                   <select className="input" value={form.category} onChange={e => setForm(f=>({...f,category:e.target.value}))}>
-                    {['medicamento','vacuna','insumo','producto'].map(c => <option key={c} value={c} style={{ textTransform:'capitalize' }}>{c}</option>)}
+                    {CATS.filter(c=>c!=='Todos').map(c => <option key={c} value={c} style={{ textTransform:'capitalize' }}>{c}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="label">Unidad</label>
                   <select className="input" value={form.unit} onChange={e => setForm(f=>({...f,unit:e.target.value}))}>
-                    {['pieza','caja','frasco','ml','kg','tableta'].map(u => <option key={u}>{u}</option>)}
+                    {UNITS.map(u => <option key={u}>{u}</option>)}
                   </select>
                 </div>
                 <div>
@@ -156,10 +207,20 @@ export default function Inventory({ clinic }) {
                   <label className="label">Vencimiento</label>
                   <input className="input" type="date" value={form.expiry_date} onChange={e => setForm(f=>({...f,expiry_date:e.target.value}))} />
                 </div>
+                <div>
+                  <label className="label">Proveedor</label>
+                  <input className="input" value={form.supplier} onChange={e => setForm(f=>({...f,supplier:e.target.value}))} placeholder="Nombre del proveedor..." />
+                </div>
+                <div style={{ gridColumn:'1/-1' }}>
+                  <label className="label">Notas</label>
+                  <input className="input" value={form.notes} onChange={e => setForm(f=>({...f,notes:e.target.value}))} placeholder="Indicaciones, observaciones..." />
+                </div>
               </div>
               <div style={{ display:'flex', gap:10 }}>
                 <button className="btn btn-secondary" onClick={() => setShowModal(false)} style={{ flex:1, justifyContent:'center' }}>Cancelar</button>
-                <button className="btn btn-primary" onClick={saveItem} disabled={!form.name} style={{ flex:2, justifyContent:'center' }}>Guardar</button>
+                <button className="btn btn-primary" onClick={saveItem} disabled={!form.name.trim() || saving} style={{ flex:2, justifyContent:'center' }}>
+                  {saving ? 'Guardando...' : 'Guardar'}
+                </button>
               </div>
             </div>
           </div>
