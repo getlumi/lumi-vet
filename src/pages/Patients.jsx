@@ -169,14 +169,17 @@ export default function Patients({ clinic, openNew }) {
     if (visitType === 'servicio') {
       if (selectedType === 'lumi') {
         await supabase.from('vet_transactions').insert({ clinic_id: clinic.id, pet_id: patientId, owner_id: ownerId, type:'income', category:'servicio', description: serviceDesc, amount: servicePrice ? parseFloat(servicePrice) : 0, date: today })
+        // También en vet_records para que aparezca en Lumi App
+        await supabase.from('vet_records').insert({ clinic_id: clinic.id, pet_id: patientId, date: today, type:'servicio', description: serviceDesc, price: servicePrice ? parseFloat(servicePrice) : null })
       } else {
         await supabase.from('vet_regular_records').insert({ clinic_id: clinic.id, regular_patient_id: selected.id, date: today, type:'servicio', description: serviceDesc, price: servicePrice ? parseFloat(servicePrice) : 0 })
       }
     } else {
       // Productos — descontar inventario y registrar cada uno
+      const totalAmount = cartItems.reduce((sum, c) => sum + c.qty * c.unit_price, 0)
+      const productDesc = cartItems.map(c => `${c.name} x${c.qty}`).join(', ')
       for (const item of cartItems) {
         if (item.qty <= 0) continue
-        // Registrar transacción
         if (selectedType === 'lumi') {
           await supabase.from('vet_transactions').insert({ clinic_id: clinic.id, pet_id: patientId, owner_id: ownerId, type:'income', category:'producto', description: `${item.name} x${item.qty}`, amount: item.qty * item.unit_price, date: today })
         } else {
@@ -187,6 +190,10 @@ export default function Patients({ clinic, openNew }) {
         if (invItem) {
           await supabase.from('vet_inventory').update({ stock: Math.max(0, invItem.stock - item.qty) }).eq('id', item.inventory_id)
         }
+      }
+      // Un registro en vet_records con todos los productos para Lumi App
+      if (selectedType === 'lumi') {
+        await supabase.from('vet_records').insert({ clinic_id: clinic.id, pet_id: patientId, date: today, type:'producto', description: productDesc, price: totalAmount })
       }
     }
 
@@ -297,11 +304,30 @@ export default function Patients({ clinic, openNew }) {
     // Notificar al dueño en Lumi App
     if (selected.owner_id) {
       await supabase.from('notifications').insert({
-        user_id: selected.owner_id,
-        type:    'vaccine_update',
-        title:   '💉 Carnet actualizado',
-        message: `Tu veterinaria registró la vacuna "${vaccineForm.name}" para ${selected.pets?.name}.`,
-        data:    JSON.stringify({ pet_id: selected.pet_id, vaccine: vaccineForm.name }),
+        user_id:     selected.owner_id,
+        type:        'vaccine_update',
+        title:       '💉 Carnet actualizado',
+        body:        `Tu veterinaria registró la vacuna "${vaccineForm.name}" para ${selected.pets?.name}.`,
+        from_pet_id: selected.pet_id,
+        data:        JSON.stringify({ pet_id: selected.pet_id, vaccine: vaccineForm.name }),
+        read:        false,
+      })
+      // También notificación de puntos + calificador
+      await supabase.from('notifications').insert({
+        user_id:     selected.owner_id,
+        type:        'vet_points',
+        title:       `+15 puntos por tu visita a ${clinic.name} ⭐`,
+        body:        '¿Cómo fue tu experiencia? Califica el servicio.',
+        from_pet_id: selected.pet_id,
+        data:        JSON.stringify({ clinic_id: clinic.id, clinic_name: clinic.name, action: 'rate_visit' }),
+        read:        false,
+      })
+      // Otorgar puntos
+      await supabase.rpc('grant_visit_points', {
+        p_clinic_id: clinic.id,
+        p_owner_id:  selected.owner_id,
+        p_pet_id:    selected.pet_id,
+        p_record_id: null,
       })
     }
     await fetchLumiRecords(selected.pet_id)
