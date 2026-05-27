@@ -49,8 +49,8 @@ export default function Dashboard({ clinic, session, onNavigate }) {
   const todayStr = new Date().toLocaleDateString('es-MX', { weekday:'long', day:'numeric', month:'long' })
   const plan = clinic.plan || 'basic'
 
-  const statusLabel = (s) => s==='confirmed'?'Confirmada':s==='completed'?'Completada':'Pendiente'
-  const statusClass = (s) => s==='confirmed'?'badge-green':s==='completed'?'badge-purple':'badge-amber'
+  const statusLabel = (s) => s==='confirmed'?'Confirmada':s==='completed'?'Completada':s==='cancelled'?'Cancelada':'Pendiente'
+  const statusClass = (s) => s==='confirmed'?'badge-green':s==='completed'?'badge-purple':s==='cancelled'?'badge-red':'badge-amber'
   const isToday = (d) => d === new Date().toISOString().slice(0,10)
   const formatDate = (d) => {
     if (isToday(d)) return 'Hoy'
