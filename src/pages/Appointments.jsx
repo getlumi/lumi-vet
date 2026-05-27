@@ -69,6 +69,12 @@ export default function Appointments({ clinic, initialForm }) {
     fetchAppointments()
   }
 
+  const deleteAppointment = async (id) => {
+    if (!confirm('¿Eliminar esta cita permanentemente?')) return
+    await supabase.from('vet_appointments').delete().eq('id', id)
+    fetchAppointments()
+  }
+
   const formatDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString('es-MX', { weekday:'long', day:'numeric', month:'long' })
 
   const changeDay = (days) => {
@@ -147,6 +153,9 @@ export default function Appointments({ clinic, initialForm }) {
                       {appt.status === 'confirmed' && <button className="btn btn-primary btn-sm"   onClick={() => updateStatus(appt.id,'completed')}>Completar</button>}
                       {appt.status !== 'cancelled' && appt.status !== 'completed' && (
                         <button className="btn btn-danger btn-sm" onClick={() => updateStatus(appt.id,'cancelled')}>Cancelar</button>
+                      )}
+                      {(appt.status === 'cancelled' || appt.status === 'completed') && (
+                        <button className="btn btn-danger btn-icon btn-sm" onClick={() => deleteAppointment(appt.id)} title="Eliminar"><i className="ti ti-trash" /></button>
                       )}
                     </div>
                   </td>
