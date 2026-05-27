@@ -193,6 +193,29 @@ export default function Patients({ clinic, openNew }) {
     // Actualizar última visita y contador
     if (selectedType === 'lumi') {
       await supabase.from('vet_patients').update({ last_visit: today, visit_count: (selected.visit_count || 0) + 1 }).eq('id', selected.id)
+
+      // Otorgar puntos al dueño Lumi por visita
+      if (selected.owner_id && selected.pet_id) {
+        const { data: pointsData } = await supabase.rpc('grant_visit_points', {
+          p_clinic_id: clinic.id,
+          p_owner_id:  selected.owner_id,
+          p_pet_id:    selected.pet_id,
+          p_record_id: null,
+        })
+        // Notificación al dueño con puntos + aviso de encuesta
+        await supabase.from('notifications').insert({
+          user_id:  selected.owner_id,
+          type:     'vet_points',
+          title:    `+15 puntos por tu visita a ${clinic.name} ⭐`,
+          body:     `¿Cómo fue tu experiencia? Califica el servicio.`,
+          from_user_id: null,
+          from_pet_id:  selected.pet_id,
+          data:     JSON.stringify({ clinic_id: clinic.id, clinic_name: clinic.name, action: 'rate_visit' }),
+          read:     false,
+        })
+        setPointsMsg(`+15 puntos otorgados a ${selected.profiles?.name || 'el dueño'} 🎉`)
+        setTimeout(() => setPointsMsg(null), 4000)
+      }
     } else {
       await supabase.from('vet_regular_patients').update({ last_visit: today, visit_count: (selected.visit_count || 0) + 1 }).eq('id', selected.id)
     }
