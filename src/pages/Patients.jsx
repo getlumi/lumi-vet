@@ -203,24 +203,14 @@ export default function Patients({ clinic, openNew }) {
 
       // Otorgar puntos al dueño Lumi por visita
       if (selected.owner_id && selected.pet_id) {
-        const { data: pointsData } = await supabase.rpc('grant_visit_points', {
+        await supabase.rpc('grant_visit_points', {
           p_clinic_id: clinic.id,
           p_owner_id:  selected.owner_id,
           p_pet_id:    selected.pet_id,
           p_record_id: null,
+          p_points:    8,
         })
-        // Notificación al dueño con puntos + aviso de encuesta
-        await supabase.from('notifications').insert({
-          user_id:  selected.owner_id,
-          type:     'vet_points',
-          title:    `+15 puntos por tu visita a ${clinic.name} ⭐`,
-          body:     `¿Cómo fue tu experiencia? Califica el servicio.`,
-          from_user_id: null,
-          from_pet_id:  selected.pet_id,
-          data:     JSON.stringify({ clinic_id: clinic.id, clinic_name: clinic.name, action: 'rate_visit' }),
-          read:     false,
-        })
-        setPointsMsg(`+15 puntos otorgados a ${selected.profiles?.name || 'el dueño'} 🎉`)
+        setPointsMsg(`+8 puntos otorgados a ${selected.profiles?.name || 'el dueño'} 🎉`)
         setTimeout(() => setPointsMsg(null), 4000)
       }
     } else {
@@ -312,22 +302,13 @@ export default function Patients({ clinic, openNew }) {
         data:        JSON.stringify({ pet_id: selected.pet_id, vaccine: vaccineForm.name }),
         read:        false,
       })
-      // También notificación de puntos + calificador
-      await supabase.from('notifications').insert({
-        user_id:     selected.owner_id,
-        type:        'vet_points',
-        title:       `+15 puntos por tu visita a ${clinic.name} ⭐`,
-        body:        '¿Cómo fue tu experiencia? Califica el servicio.',
-        from_pet_id: selected.pet_id,
-        data:        JSON.stringify({ clinic_id: clinic.id, clinic_name: clinic.name, action: 'rate_visit' }),
-        read:        false,
-      })
-      // Otorgar puntos
+      // Otorgar 5 puntos por actualización de carnet por Lumi Vet
       await supabase.rpc('grant_visit_points', {
         p_clinic_id: clinic.id,
         p_owner_id:  selected.owner_id,
         p_pet_id:    selected.pet_id,
         p_record_id: null,
+        p_points:    5,
       })
     }
     await fetchLumiRecords(selected.pet_id)
