@@ -77,15 +77,15 @@ export default function Patients({ clinic, openNew }) {
 
   const fetchLumiRecords = async (petId) => {
     const [recRes, vacRes] = await Promise.all([
-      supabase.from('vet_records').select('*').eq('clinic_id', clinic.id).eq('pet_id', petId).order('date', { ascending: false }),
-      supabase.from('vaccines').select('*').eq('pet_id', petId).order('date', { ascending: false }),
+      supabase.from('vet_records').select('*').eq('clinic_id', clinic.id).eq('pet_id', petId).order('created_at', { ascending: false }),
+      supabase.from('vaccines').select('*').eq('pet_id', petId).order('created_at', { ascending: false }),
     ])
     setRecords(recRes.data || [])
     setVaccines(vacRes.data || [])
   }
 
   const fetchRegularRecords = async (patientId) => {
-    const { data } = await supabase.from('vet_regular_records').select('*').eq('regular_patient_id', patientId).order('date', { ascending: false })
+    const { data } = await supabase.from('vet_regular_records').select('*').eq('regular_patient_id', patientId).order('created_at', { ascending: false })
     setRecords(data || [])
     setVaccines([])
   }
@@ -99,7 +99,7 @@ export default function Patients({ clinic, openNew }) {
     setLumiLoading(true); setLumiError(''); setLumiSearch(null)
     const { data: pet } = await supabase.from('pets').select('*, profiles(id,name,phone,email)').eq('lumi_id', lumiCode.trim().toUpperCase()).single()
     if (!pet) { setLumiError('No se encontró ninguna mascota con ese código'); setLumiLoading(false); return }
-    const { data: lastVisit } = await supabase.from('vet_records').select('*').eq('clinic_id', clinic.id).eq('pet_id', pet.id).order('date', { ascending: false }).limit(1).maybeSingle()
+    const { data: lastVisit } = await supabase.from('vet_records').select('*').eq('clinic_id', clinic.id).eq('pet_id', pet.id).order('created_at', { ascending: false }).limit(1).maybeSingle()
     setLumiSearch({ pet, lastVisit })
     setLumiLoading(false)
   }
@@ -260,12 +260,15 @@ export default function Patients({ clinic, openNew }) {
   const saveVaccine = async () => {
     // Guardar vacuna en tabla compartida con Lumi App
     const { error } = await supabase.from('vaccines').insert({
-      pet_id:    selected.pet_id,
-      clinic_id: clinic.id,
-      name:      vaccineForm.name,
-      date:      vaccineForm.date,
-      next_date: vaccineForm.next_date || null,
-      notes:     vaccineForm.notes || null,
+      pet_id:       selected.pet_id,
+      name:         vaccineForm.name,
+      applied_date: vaccineForm.date,
+      next_date:    vaccineForm.next_date || null,
+      notes:        vaccineForm.notes || null,
+      vet_clinic:   clinic.name,
+      vet_id:       clinic.id,
+      registered_by: 'vet',
+      status:       'applied',
     })
     if (error) { setCarnetError(`Error al guardar: ${error.message}`); return }
     // Notificar al dueño en Lumi App
@@ -422,7 +425,7 @@ export default function Patients({ clinic, openNew }) {
                     <div key={v.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 12px', background:'var(--bg)', borderRadius:8 }}>
                       <div><p style={{ fontSize:13, fontWeight:700, margin:'0 0 2px' }}>{v.name}</p>{v.notes && <p style={{ fontSize:11, color:'var(--text-muted)', margin:0 }}>{v.notes}</p>}</div>
                       <div style={{ textAlign:'right' }}>
-                        <p style={{ fontSize:11, color:'var(--text-secondary)', margin:'0 0 2px' }}>{v.date ? new Date(v.date+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'short',year:'numeric'}) : '—'}</p>
+                        <p style={{ fontSize:11, color:'var(--text-secondary)', margin:'0 0 2px' }}>{v.applied_date ? new Date(v.applied_date+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'short',year:'numeric'}) : '—'}</p>
                         {v.next_date && <p style={{ fontSize:11, color:'var(--purple)', fontWeight:600, margin:0 }}>Refuerzo: {new Date(v.next_date+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'short'})}</p>}
                       </div>
                     </div>
