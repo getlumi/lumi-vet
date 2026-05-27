@@ -242,15 +242,47 @@ export default function Patients({ clinic, openNew }) {
   // Carnet
   const verifyCarnetCode = async () => {
     setCarnetError('')
-    const { data } = await supabase.from('vet_auth_codes').select('*').eq('pet_id', selected.pet_id).eq('code', carnetCode.trim().toUpperCase()).maybeSingle()
-    if (!data) { setCarnetError('Código incorrecto. Pide al dueño el código de su app.'); return }
+    const code = carnetCode.trim()
+    const { data } = await supabase
+      .from('vet_auth_codes')
+      .select('*')
+      .eq('pet_id', selected.pet_id)
+      .eq('code', code)
+      .eq('used', false)
+      .gt('expires_at', new Date().toISOString())
+      .maybeSingle()
+    if (!data) { setCarnetError('Código incorrecto o expirado. Pide al dueño un código nuevo desde su app.'); return }
+    // Marcar código como usado
+    await supabase.from('vet_auth_codes').update({ used: true }).eq('id', data.id)
     setCarnetStep('form')
   }
 
   const saveVaccine = async () => {
-    await supabase.from('vaccines').insert({ pet_id: selected.pet_id, clinic_id: clinic.id, ...vaccineForm })
+    // Guardar vacuna en tabla compartida con Lumi App
+    const { error } = await supabase.from('vaccines').insert({
+      pet_id:    selected.pet_id,
+      clinic_id: clinic.id,
+      name:      vaccineForm.name,
+      date:      vaccineForm.date,
+      next_date: vaccineForm.next_date || null,
+      notes:     vaccineForm.notes || null,
+    })
+    if (error) { setCarnetError(`Error al guardar: ${error.message}`); return }
+    // Notificar al dueño en Lumi App
+    if (selected.owner_id) {
+      await supabase.from('notifications').insert({
+        user_id: selected.owner_id,
+        type:    'vaccine_update',
+        title:   '💉 Carnet actualizado',
+        message: `Tu veterinaria registró la vacuna "${vaccineForm.name}" para ${selected.pets?.name}.`,
+        data:    JSON.stringify({ pet_id: selected.pet_id, vaccine: vaccineForm.name }),
+      })
+    }
     await fetchLumiRecords(selected.pet_id)
-    setShowCarnet(false); setCarnetCode(''); setCarnetStep('code'); setVaccineForm({ name:'', date:'', next_date:'', notes:'' })
+    setShowCarnet(false); setCarnetCode(''); setCarnetStep('code')
+    setVaccineForm({ name:'', date:'', next_date:'', notes:'' })
+    setPointsMsg('💉 Carnet actualizado correctamente')
+    setTimeout(() => setPointsMsg(null), 4000)
   }
 
   const calcAge = (bd) => {
@@ -402,7 +434,7 @@ export default function Patients({ clinic, openNew }) {
 
           {/* Historial */}
           <div className="card">
-            <p style={{ fontSize:15, fontWeight:800, margin:'0 0 16px' }}>Historial de consultas</p>
+            <p style={{ fontSize:15, fontWeight:800, margin:'0 0 16px' }}>Historial de visitas</p>
             {records.length === 0 ? <p style={{ color:'var(--text-muted)', textAlign:'center', padding:'20px 0' }}>Sin consultas registradas</p> : (
               <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
                 {records.map(r => (
@@ -421,6 +453,11 @@ export default function Patients({ clinic, openNew }) {
                     {r.treatment   && <p style={{ fontSize:13, margin:'0 0 4px' }}><strong>Tratamiento:</strong> {r.treatment}</p>}
                     {r.notes       && <p style={{ fontSize:13, color:'var(--text-secondary)', margin:0 }}>{r.notes}</p>}
                     {r.next_visit  && <p style={{ fontSize:12, color:'var(--purple)', margin:'6px 0 0', fontWeight:600 }}>📅 Próxima visita: {new Date(r.next_visit+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'long'})}</p>}
+                    <div style={{ display:'flex', gap:8, marginTop:6, flexWrap:'wrap' }}>
+                      {selectedType==='lumi' && selected.pets?.breed && <span style={{ fontSize:11, color:'var(--text-muted)' }}>🐾 {selected.pets.breed}</span>}
+                      {r.weight && <span style={{ fontSize:11, color:'var(--text-muted)' }}>⚖️ {r.weight} kg</span>}
+                      {r.temperature && <span style={{ fontSize:11, color:'var(--text-muted)' }}>🌡️ {r.temperature}°C</span>}
+                    </div>
                   </div>
                 ))}
               </div>
