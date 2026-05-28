@@ -93,23 +93,33 @@ export default function App() {
   return (
     <div className="vet-shell">
       <aside className="sidebar">
-        <div style={{ padding:'20px 16px 16px', borderBottom:'1px solid var(--border)' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <div style={{ width:36, height:36, borderRadius:10, background:'linear-gradient(135deg,#6B21A8,#C026D3)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-              <i className="ti ti-paw" style={{ fontSize:18, color:'white' }} />
+        {/* Logo + nombre clínica */}
+        <div style={{ padding:'18px 16px 14px', borderBottom:'1px solid rgba(124,58,237,0.12)' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+            <div style={{ width:32, height:32, borderRadius:8, background:'linear-gradient(135deg,#6B21A8,#C026D3)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              <i className="ti ti-paw" style={{ fontSize:16, color:'white' }} />
             </div>
             <div>
-              <p style={{ fontSize:15, fontWeight:800, color:'var(--purple)', margin:0 }}>Lumi Vet</p>
-              <p style={{ fontSize:10, color:'var(--text-muted)', margin:0, fontWeight:600 }}>
+              <p style={{ fontSize:13, fontWeight:800, color:'rgba(255,255,255,0.9)', margin:0, letterSpacing:'-0.3px' }}>Lumi Vet</p>
+              <p style={{ fontSize:10, color:'rgba(255,255,255,0.35)', margin:0, fontWeight:500 }}>
                 {plan === 'basic' ? 'Plan Básico' : plan === 'pro' ? 'Plan Pro ⭐' : 'Plan Plus 💎'}
               </p>
             </div>
           </div>
-        </div>
-
-        <div style={{ padding:'12px 16px', borderBottom:'1px solid var(--border)', background:'#FAFAFA' }}>
-          <p style={{ fontSize:13, fontWeight:700, color:'var(--text-primary)', margin:'0 0 2px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{clinic.name}</p>
-          <p style={{ fontSize:11, color:'var(--text-muted)', margin:0 }}>{clinic.city}</p>
+          {/* Logo o nombre de la clínica */}
+          <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 10px', background:'rgba(255,255,255,0.05)', borderRadius:10, border:'1px solid rgba(255,255,255,0.08)' }}>
+            {clinic.logo_url ? (
+              <img src={clinic.logo_url} alt={clinic.name} style={{ width:32, height:32, borderRadius:8, objectFit:'contain', background:'white', padding:3 }} />
+            ) : (
+              <div style={{ width:32, height:32, borderRadius:8, background:'rgba(124,58,237,0.3)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <i className="ti ti-building-hospital" style={{ fontSize:16, color:'rgba(255,255,255,0.7)' }} />
+              </div>
+            )}
+            <div style={{ minWidth:0 }}>
+              <p style={{ fontSize:12, fontWeight:700, color:'rgba(255,255,255,0.9)', margin:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{clinic.name}</p>
+              <p style={{ fontSize:10, color:'rgba(255,255,255,0.35)', margin:0 }}>{clinic.city}</p>
+            </div>
+          </div>
         </div>
 
         <nav style={{ flex:1, padding:'12px 8px', overflowY:'auto' }}>
