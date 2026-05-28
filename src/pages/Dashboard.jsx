@@ -9,6 +9,13 @@ export default function Dashboard({ clinic, session, onNavigate }) {
   const [panelData, setPanelData] = useState([])
   const [panelLoading, setPanelLoading] = useState(false)
   const [ranking, setRanking] = useState({ avg: 0, count: 0 })
+  const [showQuickSale, setShowQuickSale] = useState(false)
+  const [quickCart, setQuickCart] = useState([])
+  const [quickInventory, setQuickInventory] = useState([])
+  const [quickSearch, setQuickSearch] = useState('')
+  const [quickClient, setQuickClient] = useState({ name: '', phone: '' })
+  const [quickSaving, setQuickSaving] = useState(false)
+  const [quickSuccess, setQuickSuccess] = useState(false)
 
   useEffect(() => { fetchAll() }, [clinic])
 
@@ -29,6 +36,14 @@ export default function Dashboard({ clinic, session, onNavigate }) {
       })
       setToday(todayRes.data || [])
 
+      // Cargar inventario para venta rápida
+      const { data: inv } = await supabase
+        .from('vet_inventory')
+        .select('id,name,unit,sale_price,stock,category')
+        .eq('clinic_id', clinic.id)
+        .order('name')
+      setQuickInventory(inv || [])
+
       // Ranking de la clínica
       const { data: reviews } = await supabase
         .from('vet_reviews').select('rating').eq('clinic_id', clinic.id)
@@ -38,6 +53,57 @@ export default function Dashboard({ clinic, session, onNavigate }) {
       }
     } catch(e) { console.error(e) }
     finally { setLoading(false) }
+  }
+
+  const addToQuickCart = (item) => {
+    setQuickCart(prev => {
+      const existing = prev.find(c => c.id === item.id)
+      if (existing) return prev.map(c => c.id === item.id ? { ...c, qty: c.qty + 1 } : c)
+      return [...prev, { ...item, qty: 1 }]
+    })
+  }
+
+  const updateQuickQty = (id, qty) => {
+    if (qty <= 0) { setQuickCart(prev => prev.filter(c => c.id !== id)); return }
+    setQuickCart(prev => prev.map(c => c.id === id ? { ...c, qty } : c))
+  }
+
+  const quickTotal = quickCart.reduce((sum, c) => sum + (c.sale_price || 0) * c.qty, 0)
+
+  const saveQuickSale = async () => {
+    if (quickCart.length === 0) return
+    setQuickSaving(true)
+    const today = new Date().toISOString().slice(0,10)
+    try {
+      for (const item of quickCart) {
+        await supabase.from('vet_transactions').insert({
+          clinic_id:   clinic.id,
+          type:        'income',
+          category:    item.category === 'servicio' ? 'servicio' : 'producto',
+          description: `${item.name} x${item.qty}${quickClient.name ? ` — ${quickClient.name}` : ''}`,
+          amount:      (item.sale_price || 0) * item.qty,
+          date:        today,
+          client_name: quickClient.name || null,
+          client_phone: quickClient.phone || null,
+        })
+        // Descontar stock solo si no es servicio
+        if (item.category !== 'servicio' && item.stock > 0) {
+          await supabase.from('vet_inventory')
+            .update({ stock: Math.max(0, item.stock - item.qty) })
+            .eq('id', item.id)
+        }
+      }
+      setQuickSuccess(true)
+      setTimeout(() => {
+        setQuickSuccess(false)
+        setShowQuickSale(false)
+        setQuickCart([])
+        setQuickClient({ name: '', phone: '' })
+        setQuickSearch('')
+        fetchAll()
+      }, 2000)
+    } catch(e) { console.error(e) }
+    finally { setQuickSaving(false) }
   }
 
   const openPanel = async (type) => {
@@ -149,7 +215,7 @@ export default function Dashboard({ clinic, session, onNavigate }) {
               { icon:'ti-calendar-plus', label:'Nueva cita',     color:'#EDE9FE', iconColor:'#6B21A8', action:'appointments' },
               { icon:'ti-paw',           label:'Nuevo paciente', color:'#DCFCE7', iconColor:'#16A34A', action:'patients', plan:'pro' },
               { icon:'ti-package',       label:'Inventario',     color:'#FEF3C7', iconColor:'#D97706', action:'inventory', plan:'pro' },
-              { icon:'ti-chart-bar',     label:'Finanzas',       color:'#FCE7F3', iconColor:'#DB2777', action:'finance',   plan:'plus' },
+              { icon:'ti-shopping-cart', label:'Venta rápida',   color:'#FEE2E2', iconColor:'#DC2626', action:'quick_sale', plan:'pro' },
             ].filter(a => !a.plan || plan===a.plan || (a.plan==='pro' && plan==='plus')).map(a => (
               <button key={a.label} onClick={() => onNavigate(a.action, a.label==='Nuevo paciente'?'new':null)}
                 style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:8, padding:'16px 12px', borderRadius:12, border:'1px solid var(--border)', background:a.color, cursor:'pointer', transition:'transform 0.15s' }}
@@ -211,6 +277,96 @@ export default function Dashboard({ clinic, session, onNavigate }) {
                   </div>
                 ))}
               </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+
+      {/* MODAL VENTA RÁPIDA */}
+      {showQuickSale && (
+        <div onClick={e => e.target === e.currentTarget && setShowQuickSale(false)}
+          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+          <div style={{ background:'white', borderRadius:20, width:'100%', maxWidth:480, maxHeight:'85vh', overflow:'auto', padding:20 }}>
+
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+              <p style={{ fontSize:17, fontWeight:800, margin:0 }}>🛒 Venta rápida</p>
+              <button onClick={() => setShowQuickSale(false)} style={{ background:'var(--purple-light)', border:'none', borderRadius:'50%', width:32, height:32, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                <i className="ti ti-x" style={{ color:'var(--purple)', fontSize:16 }} />
+              </button>
+            </div>
+
+            {quickSuccess ? (
+              <div style={{ textAlign:'center', padding:'32px 0' }}>
+                <div style={{ fontSize:48, marginBottom:12 }}>✅</div>
+                <p style={{ fontSize:18, fontWeight:800, color:'var(--purple)', margin:0 }}>¡Venta registrada!</p>
+                <p style={{ fontSize:13, color:'var(--text-secondary)', margin:'8px 0 0' }}>Total: ${quickTotal.toFixed(2)}</p>
+              </div>
+            ) : (
+              <>
+                {/* Datos cliente (opcional) */}
+                <div style={{ background:'var(--bg)', borderRadius:12, padding:12, marginBottom:14 }}>
+                  <p style={{ fontSize:11, fontWeight:700, color:'var(--text-secondary)', textTransform:'uppercase', letterSpacing:'0.5px', margin:'0 0 8px' }}>Cliente (opcional)</p>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                    <input className="input" value={quickClient.name} onChange={e => setQuickClient(c => ({...c, name: e.target.value}))} placeholder="Nombre..." style={{ fontSize:13 }} />
+                    <input className="input" value={quickClient.phone} onChange={e => setQuickClient(c => ({...c, phone: e.target.value}))} placeholder="Teléfono..." style={{ fontSize:13 }} type="tel" />
+                  </div>
+                </div>
+
+                {/* Buscador de productos/servicios */}
+                <input className="input" value={quickSearch} onChange={e => setQuickSearch(e.target.value)}
+                  placeholder="🔍 Buscar producto o servicio..." style={{ marginBottom:10 }} />
+
+                {/* Lista de inventario */}
+                <div style={{ maxHeight:200, overflowY:'auto', display:'flex', flexDirection:'column', gap:6, marginBottom:14 }}>
+                  {quickInventory
+                    .filter(i => i.name.toLowerCase().includes(quickSearch.toLowerCase()))
+                    .filter(i => i.category === 'servicio' || i.stock > 0)
+                    .map(item => (
+                      <div key={item.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 12px', background:'var(--bg)', borderRadius:8 }}>
+                        <div>
+                          <p style={{ fontSize:13, fontWeight:600, margin:'0 0 2px' }}>{item.name}</p>
+                          <p style={{ fontSize:11, color:'var(--text-muted)', margin:0 }}>
+                            {item.category === 'servicio' ? '🛠 Servicio' : `📦 Stock: ${item.stock}`} · ${item.sale_price || 0}
+                          </p>
+                        </div>
+                        <button onClick={() => addToQuickCart(item)} className="btn btn-primary btn-sm">+ Agregar</button>
+                      </div>
+                    ))
+                  }
+                </div>
+
+                {/* Carrito */}
+                {quickCart.length > 0 && (
+                  <div style={{ border:'1px solid var(--border)', borderRadius:12, padding:12, marginBottom:14 }}>
+                    <p style={{ fontSize:13, fontWeight:700, margin:'0 0 10px' }}>🛒 Carrito</p>
+                    {quickCart.map(c => (
+                      <div key={c.id} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+                        <p style={{ fontSize:13, flex:1, margin:0 }}>{c.name}</p>
+                        <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                          <button onClick={() => updateQuickQty(c.id, c.qty-1)} style={{ width:24, height:24, borderRadius:6, border:'1px solid var(--border)', background:'white', cursor:'pointer', fontWeight:700 }}>−</button>
+                          <span style={{ fontSize:13, fontWeight:700, minWidth:20, textAlign:'center' }}>{c.qty}</span>
+                          <button onClick={() => updateQuickQty(c.id, c.qty+1)} style={{ width:24, height:24, borderRadius:6, border:'1px solid var(--border)', background:'white', cursor:'pointer', fontWeight:700 }}>+</button>
+                        </div>
+                        <p style={{ fontSize:13, fontWeight:700, color:'var(--purple)', margin:0, minWidth:60, textAlign:'right' }}>${((c.sale_price||0)*c.qty).toFixed(2)}</p>
+                      </div>
+                    ))}
+                    <div style={{ borderTop:'1px solid var(--border)', marginTop:8, paddingTop:8, display:'flex', justifyContent:'space-between' }}>
+                      <p style={{ fontSize:13, fontWeight:700, margin:0 }}>Total</p>
+                      <p style={{ fontSize:16, fontWeight:900, color:'var(--purple)', margin:0 }}>${quickTotal.toFixed(2)}</p>
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ display:'flex', gap:10 }}>
+                  <button onClick={() => setShowQuickSale(false)} className="btn btn-secondary" style={{ flex:1, justifyContent:'center' }}>Cancelar</button>
+                  <button onClick={saveQuickSale} disabled={quickCart.length === 0 || quickSaving}
+                    className="btn btn-primary" style={{ flex:2, justifyContent:'center', background:'linear-gradient(135deg,#DC2626,#EF4444)' }}>
+                    <i className="ti ti-shopping-cart" style={{ fontSize:16 }} />
+                    {quickSaving ? 'Guardando...' : `Cobrar $${quickTotal.toFixed(2)}`}
+                  </button>
+                </div>
+              </>
             )}
           </div>
         </div>
