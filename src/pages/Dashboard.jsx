@@ -133,10 +133,10 @@ export default function Dashboard({ clinic, session, onNavigate }) {
 
   return (
     <div>
-      <div style={{ marginBottom:28, paddingBottom:20, borderBottom:'1px solid var(--border)' }}>
-        <p style={{ fontSize:11, fontWeight:700, color:'var(--text-muted)', letterSpacing:'1.5px', textTransform:'uppercase', margin:'0 0 6px' }}>{todayStr}</p>
-        <p style={{ fontSize:28, fontWeight:800, color:'var(--text-primary)', margin:0, letterSpacing:'-0.5px', lineHeight:1.2 }}>
-          Buenos días <span style={{ display:'inline-block' }}>👋</span>
+      <div style={{ marginBottom:28, paddingTop:4, paddingBottom:20, borderBottom:'1px solid var(--border)' }}>
+        <p style={{ fontSize:12, fontWeight:500, color:'var(--text-muted)', letterSpacing:'0.3px', margin:'0 0 6px', textTransform:'capitalize' }}>{todayStr}</p>
+        <p style={{ fontSize:24, fontWeight:700, color:'var(--purple-dark)', margin:0, letterSpacing:'-0.3px', lineHeight:1.3 }}>
+          Buenos días 👋
         </p>
       </div>
 
