@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
-const CATS = ['Todos','medicamento','vacuna','insumo','producto','alimento','juguete','accesorio']
+const CATS = ['Todos','medicamento','vacuna','insumo','producto','alimento','juguete','accesorio','servicio']
 const UNITS = ['pieza','caja','frasco','ml','kg','tableta','bolsa','lata','sobre']
 
 export default function Inventory({ clinic }) {
@@ -177,20 +177,26 @@ export default function Inventory({ clinic }) {
                     {CATS.filter(c=>c!=='Todos').map(c => <option key={c} value={c} style={{ textTransform:'capitalize' }}>{c}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label className="label">Unidad</label>
-                  <select className="input" value={form.unit} onChange={e => setForm(f=>({...f,unit:e.target.value}))}>
-                    {UNITS.map(u => <option key={u}>{u}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="label">Stock actual</label>
-                  <input className="input" type="number" value={form.stock} onChange={e => setForm(f=>({...f,stock:e.target.value}))} placeholder="0" />
-                </div>
-                <div>
-                  <label className="label">Stock mínimo</label>
-                  <input className="input" type="number" value={form.min_stock} onChange={e => setForm(f=>({...f,min_stock:e.target.value}))} placeholder="5" />
-                </div>
+                {form.category !== 'servicio' && (
+                  <div>
+                    <label className="label">Unidad</label>
+                    <select className="input" value={form.unit} onChange={e => setForm(f=>({...f,unit:e.target.value}))}>
+                      {UNITS.map(u => <option key={u}>{u}</option>)}
+                    </select>
+                  </div>
+                )}
+                {form.category !== 'servicio' && (
+                  <div>
+                    <label className="label">Stock actual</label>
+                    <input className="input" type="number" value={form.stock} onChange={e => setForm(f=>({...f,stock:e.target.value}))} placeholder="0" />
+                  </div>
+                )}
+                {form.category !== 'servicio' && (
+                  <div>
+                    <label className="label">Stock mínimo</label>
+                    <input className="input" type="number" value={form.min_stock} onChange={e => setForm(f=>({...f,min_stock:e.target.value}))} placeholder="5" />
+                  </div>
+                )}
                 <div>
                   <label className="label">Precio costo</label>
                   <input className="input" type="number" value={form.cost_price} onChange={e => setForm(f=>({...f,cost_price:e.target.value}))} placeholder="0.00" />
