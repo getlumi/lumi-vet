@@ -216,7 +216,7 @@ export default function Dashboard({ clinic, session, onNavigate }) {
               { icon:'ti-package',       label:'Inventario',     color:'#FEF3C7', iconColor:'#D97706', action:'inventory', plan:'pro' },
               { icon:'ti-shopping-cart', label:'Venta rápida',   color:'#FEE2E2', iconColor:'#DC2626', action:'quick_sale', plan:'pro' },
             ].filter(a => !a.plan || plan===a.plan || (a.plan==='pro' && plan==='plus')).map(a => (
-              <button key={a.label} onClick={() => onNavigate(a.action, a.label==='Nuevo paciente'?'new':null)}
+              <button key={a.label} onClick={() => a.action === 'quick_sale' ? setShowQuickSale(true) : onNavigate(a.action, a.label==='Nuevo paciente'?'new':null)}
                 style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:8, padding:'16px 12px', borderRadius:12, border:'1px solid var(--border)', background:a.color, cursor:'pointer', transition:'transform 0.15s' }}
                 onMouseEnter={e => e.currentTarget.style.transform='scale(1.03)'}
                 onMouseLeave={e => e.currentTarget.style.transform='scale(1)'}>
