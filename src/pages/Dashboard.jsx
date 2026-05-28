@@ -75,16 +75,15 @@ export default function Dashboard({ clinic, session, onNavigate }) {
     setQuickSaving(true)
     const today = new Date().toISOString().slice(0,10)
     try {
+      const clientNote = quickClient.name ? ' — ' + quickClient.name + (quickClient.phone ? ' ' + quickClient.phone : '') : ''
       for (const item of quickCart) {
         await supabase.from('vet_transactions').insert({
           clinic_id:   clinic.id,
           type:        'income',
           category:    item.category === 'servicio' ? 'servicio' : 'producto',
-          description: `${item.name} x${item.qty}${quickClient.name ? ` — ${quickClient.name}` : ''}`,
+          description: item.name + ' x' + item.qty + clientNote,
           amount:      (item.sale_price || 0) * item.qty,
           date:        today,
-          client_name: quickClient.name || null,
-          client_phone: quickClient.phone || null,
         })
         // Descontar stock solo si no es servicio
         if (item.category !== 'servicio' && item.stock > 0) {
