@@ -139,9 +139,13 @@ export default function Inventory({ clinic }) {
                   </td>
                   <td><span className="badge badge-purple" style={{ textTransform:'capitalize' }}>{item.category}</span></td>
                   <td>
-                    <span className={`badge ${item.stock<=item.min_stock?'badge-red':item.stock<=item.min_stock*2?'badge-amber':'badge-green'}`}>
-                      {item.stock} {item.unit}
-                    </span>
+                    {item.category === 'servicio' ? (
+                      <span className="badge badge-purple">Servicio</span>
+                    ) : (
+                      <span className={`badge ${item.stock<=item.min_stock?'badge-red':item.stock<=item.min_stock*2?'badge-amber':'badge-green'}`}>
+                        {item.stock} {item.unit}
+                      </span>
+                    )}
                   </td>
                   <td style={{ fontWeight:600 }}>{item.cost_price ? `$${item.cost_price}` : '—'}</td>
                   <td style={{ fontWeight:600, color:'var(--purple)' }}>{item.sale_price ? `$${item.sale_price}` : '—'}</td>
