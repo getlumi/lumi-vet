@@ -280,7 +280,6 @@ export default function Dashboard({ clinic, session, onNavigate }) {
           </div>
         </div>
       )}
-    </div>
 
       {/* MODAL VENTA RÁPIDA */}
       {showQuickSale && (
