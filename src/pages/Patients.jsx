@@ -329,8 +329,30 @@ export default function Patients({ clinic, openNew }) {
     ...regularPatients.map(p => ({ ...p, _type:'regular', _name: p.pet_name, _owner: p.owner_name })),
   ].sort((a,b) => (b.last_visit||'2000-01-01').localeCompare(a.last_visit||'2000-01-01'))
 
+  // Formatear ID Lumi automáticamente mientras escribe (sin guiones)
+  const formatLumiId = (raw) => {
+    const clean = raw.toUpperCase().replace(/[^A-Z0-9]/g, '')
+    if (clean.length <= 3) return clean
+    if (clean.length <= 7) return clean.slice(0,3) + '-' + clean.slice(3)
+    return clean.slice(0,3) + '-' + clean.slice(3,7) + '-' + clean.slice(7,13)
+  }
+
+  const searchNorm = search.toLowerCase().replace(/[^a-z0-9]/g, '')
+
   const filteredAll = allPatients.filter(p => {
-    const matchSearch = p._name?.toLowerCase().includes(search.toLowerCase()) || p._owner?.toLowerCase().includes(search.toLowerCase())
+    const name     = p._name?.toLowerCase() || ''
+    const owner    = p._owner?.toLowerCase() || ''
+    const phone    = (p.profiles?.phone || p.owner_phone || '').replace(/\D/g, '')
+    const lumiId   = (p.pets?.lumi_id || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+    const searchQ  = search.toLowerCase()
+
+    const matchSearch = 
+      name.includes(searchQ) ||
+      owner.includes(searchQ) ||
+      phone.includes(searchNorm) ||
+      lumiId.includes(searchNorm) ||
+      (p.profiles?.email || p.owner_email || '').toLowerCase().includes(searchQ)
+
     if (tab === 'todos') return matchSearch
     return matchSearch && p._type === (tab === 'lumi' ? 'lumi' : 'regular')
   })
@@ -362,7 +384,17 @@ export default function Patients({ clinic, openNew }) {
           ))}
         </div>
 
-        <input className="input" style={{ marginBottom:12 }} value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Buscar..." />
+        <input className="input" style={{ marginBottom:12 }} value={search}
+          onChange={e => {
+            const val = e.target.value
+            // Si parece un ID Lumi (empieza con L, LM o LMI), formatear automáticamente
+            if (/^[Ll]/.test(val) && !/[\s]/.test(val)) {
+              setSearch(formatLumiId(val))
+            } else {
+              setSearch(val)
+            }
+          }}
+          placeholder="🔍 Nombre, teléfono o ID Lumi (ej: LMI2026XXXXXX)..." />
 
         <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
           {filteredAll.map(p => {
