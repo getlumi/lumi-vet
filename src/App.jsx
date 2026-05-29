@@ -10,6 +10,7 @@ import Services from './pages/Services'
 import ChatVet from './pages/ChatVet'
 import Settings from './pages/Settings'
 import OnboardingVet from './pages/OnboardingVet'
+import Admin from './pages/Admin'
 
 const NAV = [
   { id: 'dashboard',    icon: 'ti-layout-dashboard', label: 'Dashboard',   plans: ['basic','pro','plus'] },
@@ -86,6 +87,7 @@ export default function App() {
       case 'finance':   return <Finance   clinic={clinic} session={session} />
       case 'chat':      return <ChatVet   clinic={clinic} session={session} />
       case 'settings':  return <Settings  clinic={clinic} session={session} onUpdate={setClinic} />
+      case 'admin':     return <Admin />
       default:          return <Dashboard clinic={clinic} session={session} onNavigate={navigate} />
     }
   }
