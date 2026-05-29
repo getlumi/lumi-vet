@@ -87,7 +87,7 @@ export default function App() {
       case 'finance':   return <Finance   clinic={clinic} session={session} />
       case 'chat':      return <ChatVet   clinic={clinic} session={session} />
       case 'settings':  return <Settings  clinic={clinic} session={session} onUpdate={setClinic} />
-      case 'admin':     return <Admin />
+      case 'admin':     return <Admin     clinic={clinic} session={session} />
       default:          return <Dashboard clinic={clinic} session={session} onNavigate={navigate} />
     }
   }
@@ -132,6 +132,20 @@ export default function App() {
             </button>
           ))}
         </nav>
+
+        {/* Botón Admin Global — solo visible si is_admin = true */}
+        {clinic.is_admin && (
+          <div style={{ padding:'0 8px 8px' }}>
+            <button
+              className={`nav-item ${page === 'admin' ? 'active' : ''}`}
+              onClick={() => navigate('admin')}
+              style={{ color:'#F59E0B', fontWeight:700 }}
+            >
+              <i className="ti ti-shield-star" />
+              Admin Global
+            </button>
+          </div>
+        )}
 
         <div style={{ padding:'12px 8px', borderTop:'1px solid var(--border)' }}>
           <a href="https://lumi-app-indol.vercel.app" target="_blank" style={{ textDecoration:'none' }}>
