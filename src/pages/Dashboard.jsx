@@ -1,373 +1,415 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
-export default function Dashboard({ clinic, session, onNavigate }) {
-  const [stats, setStats]     = useState({ appointments:0, patients:0, pendingAppts:0 })
-  const [today, setToday]     = useState([])
-  const [loading, setLoading] = useState(true)
-  const [panel, setPanel]     = useState(null)
-  const [panelData, setPanelData] = useState([])
-  const [panelLoading, setPanelLoading] = useState(false)
-  const [ranking, setRanking] = useState({ avg: 0, count: 0 })
-  const [showQuickSale, setShowQuickSale] = useState(false)
-  const [quickCart, setQuickCart] = useState([])
-  const [quickInventory, setQuickInventory] = useState([])
-  const [quickSearch, setQuickSearch] = useState('')
-  const [quickClient, setQuickClient] = useState({ name: '', phone: '' })
-  const [quickSaving, setQuickSaving] = useState(false)
-  const [quickSuccess, setQuickSuccess] = useState(false)
+const HOURS = ['07:00','07:30','08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30','18:00','18:30','19:00']
+const STATUS_COLORS = { pending:'badge-amber', confirmed:'badge-green', completed:'badge-purple', cancelled:'badge-red' }
+const STATUS_LABELS = { pending:'Pendiente', confirmed:'Confirmada', completed:'Completada', cancelled:'Cancelada' }
 
-  useEffect(() => { fetchAll() }, [clinic])
+export default function Appointments({ clinic, initialForm }) {
+  const [appointments, setAppointments] = useState([])
+  const [services, setServices]         = useState([]) // servicios del inventario
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0,10))
+  const [showModal, setShowModal]       = useState(!!initialForm)
+  const [loading, setLoading]           = useState(true)
+  const [lumiLoading, setLumiLoading]   = useState(false)
+  const [lumiPet, setLumiPet]           = useState(null) // datos completos mascota Lumi
 
-  const fetchAll = async () => {
-    try {
-      const todayStr = new Date().toISOString().slice(0,10)
-      const [apptRes, lumiRes, regularRes, todayRes, pendingRes] = await Promise.all([
-        supabase.from('vet_appointments').select('*', { count:'exact', head:true }).eq('clinic_id', clinic.id),
-        supabase.from('vet_patients').select('*', { count:'exact', head:true }).eq('clinic_id', clinic.id),
-        supabase.from('vet_regular_patients').select('*', { count:'exact', head:true }).eq('clinic_id', clinic.id),
-        supabase.from('vet_appointments').select('*, pets(name,photo_url)').eq('clinic_id', clinic.id).eq('date', todayStr).order('time'),
-        supabase.from('vet_appointments').select('*', { count:'exact', head:true }).eq('clinic_id', clinic.id).eq('status','pending'),
-      ])
-      setStats({
-        appointments: apptRes.count || 0,
-        patients:     (lumiRes.count || 0) + (regularRes.count || 0),
-        pendingAppts: pendingRes.count || 0,
-      })
-      setToday(todayRes.data || [])
-
-      // Cargar inventario para venta rápida
-      const { data: inv } = await supabase
-        .from('vet_inventory')
-        .select('id,name,unit,sale_price,stock,category')
-        .eq('clinic_id', clinic.id)
-        .order('name')
-      setQuickInventory(inv || [])
-
-      // Ranking de la clínica
-      const { data: reviews } = await supabase
-        .from('vet_reviews').select('rating').eq('clinic_id', clinic.id)
-      if (reviews && reviews.length > 0) {
-        const avg = reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
-        setRanking({ avg: avg.toFixed(1), count: reviews.length })
-      }
-    } catch(e) { console.error(e) }
-    finally { setLoading(false) }
+  const emptyForm = {
+    lumi_code:'', pet_id:null, pet_name:'', owner_name:'',
+    date: new Date().toISOString().slice(0,10),
+    time:'09:00', notes:'', status:'confirmed', price:'',
+    service_id: null, service_name:'',
+    bath_size: null, bath_extras: [],
   }
+  const [form, setForm] = useState(initialForm || emptyForm)
 
-  const addToQuickCart = (item) => {
-    setQuickCart(prev => {
-      const existing = prev.find(c => c.id === item.id)
-      if (existing) return prev.map(c => c.id === item.id ? { ...c, qty: c.qty + 1 } : c)
-      return [...prev, { ...item, qty: 1 }]
-    })
-  }
+  useEffect(() => { fetchAppointments() }, [selectedDate])
+  useEffect(() => { fetchServices() }, [])
 
-  const updateQuickQty = (id, qty) => {
-    if (qty <= 0) { setQuickCart(prev => prev.filter(c => c.id !== id)); return }
-    setQuickCart(prev => prev.map(c => c.id === id ? { ...c, qty } : c))
-  }
-
-  const quickTotal = quickCart.reduce((sum, c) => sum + (c.sale_price || 0) * c.qty, 0)
-
-  const saveQuickSale = async () => {
-    if (quickCart.length === 0) return
-    setQuickSaving(true)
-    const today = new Date().toISOString().slice(0,10)
-    try {
-      const clientNote = quickClient.name ? ' — ' + quickClient.name + (quickClient.phone ? ' ' + quickClient.phone : '') : ''
-      for (const item of quickCart) {
-        await supabase.from('vet_transactions').insert({
-          clinic_id:   clinic.id,
-          type:        'income',
-          category:    item.category === 'servicio' ? 'servicio' : 'producto',
-          description: item.name + ' x' + item.qty + clientNote,
-          amount:      (item.sale_price || 0) * item.qty,
-          date:        today,
-        })
-        // Descontar stock solo si no es servicio
-        if (item.category !== 'servicio' && item.stock > 0) {
-          await supabase.from('vet_inventory')
-            .update({ stock: Math.max(0, item.stock - item.qty) })
-            .eq('id', item.id)
-        }
-      }
-      setQuickSuccess(true)
-      setTimeout(() => {
-        setQuickSuccess(false)
-        setShowQuickSale(false)
-        setQuickCart([])
-        setQuickClient({ name: '', phone: '' })
-        setQuickSearch('')
-        fetchAll()
-      }, 2000)
-    } catch(e) { console.error(e) }
-    finally { setQuickSaving(false) }
-  }
-
-  const openPanel = async (type) => {
-    setPanel(type)
-    setPanelLoading(true)
-    let query = supabase
+  const fetchAppointments = async () => {
+    setLoading(true)
+    const { data } = await supabase
       .from('vet_appointments')
       .select('*, pets(name,photo_url)')
       .eq('clinic_id', clinic.id)
-      .order('date', { ascending: true })
-      .order('time', { ascending: true })
-    if (type === 'pending') query = query.eq('status', 'pending')
-    const { data } = await query
-    setPanelData(data || [])
-    setPanelLoading(false)
+      .eq('date', selectedDate)
+      .order('time')
+    setAppointments(data || [])
+    setLoading(false)
   }
 
-  const todayStr = new Date().toLocaleDateString('es-MX', { weekday:'long', day:'numeric', month:'long' })
-  const plan = clinic.plan || 'basic'
-
-  const statusLabel = (s) => s==='confirmed'?'Confirmada':s==='completed'?'Completada':s==='cancelled'?'Cancelada':'Pendiente'
-  const statusClass = (s) => s==='confirmed'?'badge-green':s==='completed'?'badge-purple':s==='cancelled'?'badge-red':'badge-amber'
-  const isToday = (d) => d === new Date().toISOString().slice(0,10)
-  const formatDate = (d) => {
-    if (isToday(d)) return 'Hoy'
-    return new Date(d+'T12:00:00').toLocaleDateString('es-MX',{weekday:'short',day:'numeric',month:'short'})
+  const fetchServices = async () => {
+    const { data } = await supabase
+      .from('vet_inventory')
+      .select('*')
+      .eq('clinic_id', clinic.id)
+      .eq('category', 'servicio')
+      .order('name')
+    setServices(data || [])
   }
+
+  // Buscar por código Lumi — trae peso para calcular talla de baño
+  const searchLumi = async (code) => {
+    if (!code || code.length < 10) return
+    setLumiLoading(true)
+    const { data: pet } = await supabase
+      .from('pets')
+      .select('id, name, weight, breed, pet_type, profiles(name)')
+      .eq('lumi_id', code.trim().toUpperCase())
+      .single()
+    if (pet) {
+      setLumiPet(pet)
+      setForm(f => ({ ...f, pet_id: pet.id, pet_name: pet.name, owner_name: pet.profiles?.name || '' }))
+      // Si ya hay servicio de baño seleccionado, calcular talla automáticamente
+      if (form.service_id) {
+        const svc = services.find(s => s.id === form.service_id)
+        if (svc?.is_bath_service && pet.weight) {
+          autoSelectBathSize(svc, pet.weight)
+        }
+      }
+    }
+    setLumiLoading(false)
+  }
+
+  // Seleccionar servicio
+  const handleServiceChange = (serviceId) => {
+    if (!serviceId) {
+      setForm(f => ({ ...f, service_id:null, service_name:'', bath_size:null, bath_extras:[], price:'' }))
+      return
+    }
+    const svc = services.find(s => s.id === serviceId)
+    if (!svc) return
+    const newForm = { ...form, service_id: svc.id, service_name: svc.name, bath_size:null, bath_extras:[], price: svc.sale_price ? String(svc.sale_price) : '' }
+    // Si es baño y hay mascota Lumi con peso, calcular talla
+    if (svc.is_bath_service && lumiPet?.weight) {
+      const size = calcBathSize(svc, lumiPet.weight)
+      newForm.bath_size = size
+      newForm.price = String(getBathPrice(svc, size) || '')
+    }
+    setForm(newForm)
+  }
+
+  const calcBathSize = (svc, weight) => {
+    if (weight <= (svc.small_max_kg || 10)) return 'small'
+    if (weight <= (svc.medium_max_kg || 20)) return 'medium'
+    return 'large'
+  }
+
+  const getBathPrice = (svc, size) => {
+    if (size === 'small')  return svc.price_small
+    if (size === 'medium') return svc.price_medium
+    return svc.price_large
+  }
+
+  const autoSelectBathSize = (svc, weight) => {
+    const size = calcBathSize(svc, weight)
+    const price = getBathPrice(svc, size)
+    setForm(f => ({ ...f, bath_size: size, price: String(price || '') }))
+  }
+
+  const handleBathSize = (size) => {
+    const svc = services.find(s => s.id === form.service_id)
+    const price = svc ? getBathPrice(svc, size) : 0
+    const extrasTotal = form.bath_extras.reduce((sum, e) => sum + (e.price || 0), 0)
+    setForm(f => ({ ...f, bath_size: size, price: String((price || 0) + extrasTotal) }))
+  }
+
+  const toggleExtra = (extra) => {
+    const svc = services.find(s => s.id === form.service_id)
+    const basePrice = svc ? (getBathPrice(svc, form.bath_size) || 0) : 0
+    const exists = form.bath_extras.find(e => e.name === extra.name)
+    const newExtras = exists
+      ? form.bath_extras.filter(e => e.name !== extra.name)
+      : [...form.bath_extras, extra]
+    const extrasTotal = newExtras.reduce((sum, e) => sum + (e.price || 0), 0)
+    setForm(f => ({ ...f, bath_extras: newExtras, price: String(basePrice + extrasTotal) }))
+  }
+
+  const selectedService = services.find(s => s.id === form.service_id)
+  const isBath = selectedService?.is_bath_service
+
+  const bathExtrasAvailable = selectedService ? [
+    selectedService.extra_1_name && { name: selectedService.extra_1_name, price: selectedService.extra_1_price || 0 },
+    selectedService.extra_2_name && { name: selectedService.extra_2_name, price: selectedService.extra_2_price || 0 },
+    selectedService.extra_3_name && { name: selectedService.extra_3_name, price: selectedService.extra_3_price || 0 },
+  ].filter(Boolean) : []
+
+  const saveAppointment = async () => {
+    if (!form.pet_name.trim() || !form.owner_name.trim()) return
+    const { error } = await supabase.from('vet_appointments').insert({
+      clinic_id:    clinic.id,
+      date:         form.date,
+      time:         form.time,
+      notes:        form.notes,
+      status:       form.status,
+      price:        form.price ? parseFloat(form.price) : null,
+      pet_id:       form.pet_id || null,
+      pet_name:     form.pet_name,
+      owner_name:   form.owner_name,
+      service_name: form.service_name || null,
+      bath_size:    form.bath_size || null,
+      bath_extras:  form.bath_extras.length > 0 ? form.bath_extras : null,
+    })
+    if (!error) {
+      if (form.date === selectedDate) fetchAppointments()
+      setShowModal(false)
+      setForm(emptyForm)
+      setLumiPet(null)
+    }
+  }
+
+  const updateStatus = async (id, status) => {
+    await supabase.from('vet_appointments').update({ status }).eq('id', id)
+    fetchAppointments()
+  }
+
+  const deleteAppointment = async (id) => {
+    if (!confirm('¿Eliminar esta cita permanentemente?')) return
+    await supabase.from('vet_appointments').delete().eq('id', id)
+    fetchAppointments()
+  }
+
+  const formatDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString('es-MX', { weekday:'long', day:'numeric', month:'long' })
+  const changeDay = (days) => {
+    const d = new Date(selectedDate + 'T12:00:00')
+    d.setDate(d.getDate() + days)
+    setSelectedDate(d.toISOString().slice(0,10))
+  }
+
+  const BATH_LABELS = {
+    small:  { label:'Chico', icon:'🐕', desc: selectedService ? `hasta ${selectedService.small_max_kg} kg` : '' },
+    medium: { label:'Mediano', icon:'🐕', desc: selectedService ? `hasta ${selectedService.medium_max_kg} kg` : '' },
+    large:  { label:'Grande', icon:'🐕', desc: selectedService ? `hasta ${selectedService.large_max_kg} kg` : '' },
+  }
+
+  const canSave = form.pet_name.trim() && form.owner_name.trim()
 
   return (
     <div>
-      <div style={{ marginBottom:28, paddingTop:4, paddingBottom:20, borderBottom:'1px solid var(--border)' }}>
-        <p style={{ fontSize:12, fontWeight:500, color:'var(--text-muted)', letterSpacing:'0.3px', margin:'0 0 6px', textTransform:'capitalize' }}>{todayStr}</p>
-        <p style={{ fontSize:24, fontWeight:700, color:'var(--purple-dark)', margin:0, letterSpacing:'-0.3px', lineHeight:1.3 }}>
-          Buenos días 👋
-        </p>
-      </div>
-
-      <div className="grid-4" style={{ marginBottom:24 }}>
-        {[
-          { icon:'ti-calendar-check', label:'Citas hoy',   value: today.length,        color:'#EDE9FE', iconColor:'#6B21A8', action: () => onNavigate('appointments') },
-          { icon:'ti-clock',          label:'Pendientes',  value: stats.pendingAppts,  color:'#FEF3C7', iconColor:'#D97706', action: () => openPanel('pending') },
-          { icon:'ti-paw',            label:'Pacientes',   value: stats.patients,      color:'#DCFCE7', iconColor:'#16A34A', action: () => onNavigate('patients') },
-          { icon:'ti-calendar',       label:'Total citas', value: stats.appointments,  color:'#FCE7F3', iconColor:'#DB2777', action: () => openPanel('all') },
-        ].map(s => (
-          <div key={s.label} className="stat-card" style={{ cursor:'pointer' }} onClick={s.action}>
-            <div className="stat-icon" style={{ background:s.color }}>
-              <i className={`ti ${s.icon}`} style={{ color:s.iconColor }} />
-            </div>
-            <div>
-              <p style={{ fontSize:24, fontWeight:900, color:'var(--text-primary)', margin:'0 0 2px' }}>{s.value}</p>
-              <p style={{ fontSize:12, color:'var(--text-secondary)', margin:0, fontWeight:600 }}>{s.label}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Ranking */}
-      {ranking.count > 0 && (
-        <div style={{ background:'linear-gradient(135deg,#F59E0B,#D97706)', borderRadius:14, padding:'14px 18px', marginBottom:20, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-          <div>
-            <p style={{ fontSize:13, color:'rgba(255,255,255,0.8)', margin:'0 0 4px', fontWeight:600 }}>Calificación de tu clínica</p>
-            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-              <span style={{ fontSize:28, fontWeight:900, color:'white' }}>{ranking.avg}</span>
-              <div>
-                <div style={{ display:'flex', gap:2 }}>
-                  {[1,2,3,4,5].map(s => (
-                    <span key={s} style={{ fontSize:14, color: s <= Math.round(ranking.avg) ? 'white' : 'rgba(255,255,255,0.3)' }}>★</span>
-                  ))}
-                </div>
-                <p style={{ fontSize:11, color:'rgba(255,255,255,0.7)', margin:0 }}>{ranking.count} {ranking.count===1?'calificación':'calificaciones'}</p>
-              </div>
-            </div>
-          </div>
-          <i className="ti ti-star-filled" style={{ fontSize:40, color:'rgba(255,255,255,0.3)' }} />
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 }}>
+        <div>
+          <p style={{ fontSize:11, fontWeight:700, color:'var(--text-muted)', letterSpacing:'1.5px', textTransform:'uppercase', margin:'0 0 4px' }}>Gestión</p>
+          <p style={{ fontSize:24, fontWeight:700, color:'var(--purple-dark)', margin:0, letterSpacing:'-0.3px' }}>Agenda</p>
         </div>
-      )}
+        <button className="btn btn-primary" onClick={() => { setForm(emptyForm); setLumiPet(null); setShowModal(true) }}>
+          <i className="ti ti-plus" /> Nueva cita
+        </button>
+      </div>
 
-      <div className="grid-2">
-        <div className="card">
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
-            <p style={{ fontSize:15, fontWeight:800, margin:0 }}>Citas de hoy</p>
-            <button className="btn btn-secondary btn-sm" onClick={() => onNavigate('appointments')}><i className="ti ti-plus" /> Ver agenda</button>
+      {/* Navegación de fecha */}
+      <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
+        <button className="btn btn-secondary btn-icon" onClick={() => changeDay(-1)}><i className="ti ti-chevron-left" /></button>
+        <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="input" style={{ width:'auto' }} />
+        <button className="btn btn-secondary btn-icon" onClick={() => changeDay(1)}><i className="ti ti-chevron-right" /></button>
+        <button className="btn btn-secondary btn-sm" onClick={() => setSelectedDate(new Date().toISOString().slice(0,10))}>Hoy</button>
+        <span className="badge badge-purple" style={{ marginLeft:'auto' }}>{appointments.length} citas</span>
+      </div>
+
+      {/* Lista de citas */}
+      <div className="card">
+        {loading ? (
+          <div style={{ textAlign:'center', padding:40, color:'var(--text-muted)' }}>Cargando...</div>
+        ) : appointments.length === 0 ? (
+          <div style={{ textAlign:'center', padding:'40px 20px' }}>
+            <i className="ti ti-calendar" style={{ fontSize:40, color:'var(--text-muted)', display:'block', marginBottom:12 }} />
+            <p style={{ fontSize:15, fontWeight:700, margin:'0 0 6px' }}>Sin citas para este día</p>
+            <button className="btn btn-primary" onClick={() => { setForm({...emptyForm, date:selectedDate}); setShowModal(true) }}>+ Nueva cita</button>
           </div>
-          {today.length === 0 ? (
-            <div style={{ textAlign:'center', padding:'24px 0', color:'var(--text-muted)' }}>
-              <i className="ti ti-calendar" style={{ fontSize:32, display:'block', marginBottom:8 }} />
-              <p style={{ fontSize:13 }}>Sin citas para hoy</p>
-            </div>
-          ) : (
-            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-              {today.map(appt => (
-                <div key={appt.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', background:'var(--bg)', borderRadius:10 }}>
-                  <div style={{ width:36, height:36, borderRadius:10, background:'var(--purple-light)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                    {appt.pets?.photo_url ? <img src={appt.pets.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:10 }} /> : <i className="ti ti-paw" style={{ color:'var(--purple)', fontSize:16 }} />}
-                  </div>
-                  <div style={{ flex:1 }}>
-                    <p style={{ fontSize:13, fontWeight:700, margin:'0 0 2px' }}>{appt.pets?.name || appt.pet_name || 'Mascota'}</p>
-                    <p style={{ fontSize:11, color:'var(--text-secondary)', margin:0 }}>{appt.time?.slice(0,5)} · {appt.notes || 'Consulta'}</p>
-                  </div>
-                  <span className={`badge ${statusClass(appt.status)}`}>{statusLabel(appt.status)}</span>
-                </div>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr><th>Hora</th><th>Mascota</th><th>Dueño</th><th>Servicio</th><th>Precio</th><th>Estado</th><th>Acciones</th></tr>
+            </thead>
+            <tbody>
+              {appointments.map(appt => (
+                <tr key={appt.id}>
+                  <td style={{ fontWeight:700, color:'var(--purple)' }}>{appt.time?.slice(0,5)}</td>
+                  <td>
+                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                      <div style={{ width:32, height:32, borderRadius:8, background:'var(--purple-light)', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                        {appt.pets?.photo_url ? <img src={appt.pets.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <i className="ti ti-paw" style={{ color:'var(--purple)', fontSize:14 }} />}
+                      </div>
+                      <span style={{ fontWeight:600 }}>{appt.pets?.name || appt.pet_name || '—'}</span>
+                    </div>
+                  </td>
+                  <td style={{ fontSize:13, color:'var(--text-secondary)' }}>{appt.owner_name || '—'}</td>
+                  <td style={{ fontSize:13, color:'var(--text-secondary)' }}>
+                    {appt.service_name || appt.notes || '—'}
+                    {appt.bath_size && <span className="badge badge-amber" style={{ marginLeft:6, fontSize:10 }}>{appt.bath_size === 'small' ? 'Chico' : appt.bath_size === 'medium' ? 'Mediano' : 'Grande'}</span>}
+                  </td>
+                  <td style={{ fontWeight:700 }}>{appt.price ? `$${appt.price}` : '—'}</td>
+                  <td><span className={`badge ${STATUS_COLORS[appt.status]}`}>{STATUS_LABELS[appt.status]}</span></td>
+                  <td>
+                    <div style={{ display:'flex', gap:6 }}>
+                      {appt.status === 'pending'   && <button className="btn btn-secondary btn-sm" onClick={() => updateStatus(appt.id,'confirmed')}>Confirmar</button>}
+                      {appt.status === 'confirmed' && <button className="btn btn-primary btn-sm"   onClick={() => updateStatus(appt.id,'completed')}>Completar</button>}
+                      {appt.status !== 'cancelled' && appt.status !== 'completed' && (
+                        <button className="btn btn-danger btn-sm" onClick={() => updateStatus(appt.id,'cancelled')}>Cancelar</button>
+                      )}
+                      {(appt.status === 'cancelled' || appt.status === 'completed') && (
+                        <button className="btn btn-danger btn-icon btn-sm" onClick={() => deleteAppointment(appt.id)}><i className="ti ti-trash" /></button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
               ))}
-            </div>
-          )}
-        </div>
-
-        <div className="card">
-          <p style={{ fontSize:15, fontWeight:800, margin:'0 0 16px' }}>Accesos rápidos</p>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-            {[
-              { icon:'ti-calendar-plus', label:'Nueva cita',     color:'#EDE9FE', iconColor:'#6B21A8', action:'appointments' },
-              { icon:'ti-paw',           label:'Nuevo paciente', color:'#DCFCE7', iconColor:'#16A34A', action:'patients', plan:'pro' },
-              { icon:'ti-package',       label:'Inventario',     color:'#FEF3C7', iconColor:'#D97706', action:'inventory', plan:'pro' },
-              { icon:'ti-shopping-cart', label:'Venta rápida',   color:'#FEE2E2', iconColor:'#DC2626', action:'quick_sale', plan:'pro' },
-            ].filter(a => !a.plan || plan===a.plan || (a.plan==='pro' && plan==='plus')).map(a => (
-              <button key={a.label} onClick={() => a.action === 'quick_sale' ? setShowQuickSale(true) : onNavigate(a.action, a.label==='Nuevo paciente'?'new':null)}
-                style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:8, padding:'16px 12px', borderRadius:12, border:'1px solid var(--border)', background:a.color, cursor:'pointer', transition:'transform 0.15s' }}
-                onMouseEnter={e => e.currentTarget.style.transform='scale(1.03)'}
-                onMouseLeave={e => e.currentTarget.style.transform='scale(1)'}>
-                <i className={`ti ${a.icon}`} style={{ fontSize:22, color:a.iconColor }} />
-                <span style={{ fontSize:12, fontWeight:700, color:'#374151', textAlign:'center' }}>{a.label}</span>
-              </button>
-            ))}
-          </div>
-          <div style={{ marginTop:16, padding:'12px', background:'linear-gradient(135deg,#6B21A8,#C026D3)', borderRadius:12 }}>
-            <p style={{ fontSize:12, color:'rgba(255,255,255,0.8)', margin:'0 0 4px', fontWeight:600 }}>
-              Plan {plan==='basic'?'Básico':plan==='pro'?'Pro ⭐':'Plus 💎'} activo
-            </p>
-            <p style={{ fontSize:11, color:'rgba(255,255,255,0.6)', margin:0 }}>
-              {plan==='basic'?'¿Necesitas más funciones? Actualiza a Pro':plan==='pro'?'Considera Plus para finanzas y IA':'Tienes acceso a todas las funciones'}
-            </p>
-          </div>
-        </div>
+            </tbody>
+          </table>
+        )}
       </div>
 
-      {/* Panel lateral citas */}
-      {panel && (
-        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', zIndex:1000, display:'flex', justifyContent:'flex-end' }}
-          onClick={e => e.target===e.currentTarget && setPanel(null)}>
-          <div style={{ width:420, background:'white', height:'100%', overflowY:'auto', padding:24, boxShadow:'-4px 0 24px rgba(0,0,0,0.12)' }}>
+      {/* Modal nueva cita */}
+      {showModal && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowModal(false)}>
+          <div className="modal" style={{ maxWidth:540, maxHeight:'90vh', overflowY:'auto' }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
-              <p style={{ fontSize:17, fontWeight:800, margin:0 }}>{panel==='pending'?'⏳ Citas pendientes':'📅 Todas las citas'}</p>
-              <button className="btn btn-icon" onClick={() => setPanel(null)}><i className="ti ti-x" /></button>
+              <p style={{ fontSize:17, fontWeight:800, margin:0 }}>Nueva cita</p>
+              <button className="btn btn-icon" onClick={() => setShowModal(false)} style={{ background:'var(--bg)' }}><i className="ti ti-x" /></button>
             </div>
-            {panelLoading ? <p style={{ textAlign:'center', color:'var(--text-muted)', padding:40 }}>Cargando...</p>
-            : panelData.length === 0 ? (
-              <div style={{ textAlign:'center', padding:40, color:'var(--text-muted)' }}>
-                <i className="ti ti-calendar" style={{ fontSize:36, display:'block', marginBottom:8 }} />
-                <p>Sin citas {panel==='pending'?'pendientes':'registradas'}</p>
-              </div>
-            ) : (
-              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                {panelData.map(appt => (
-                  <div key={appt.id} style={{ padding:'12px 14px', borderRadius:12, border:'1px solid var(--border)', background: isToday(appt.date)?'#EDE9FE':'white', borderLeft: isToday(appt.date)?'3px solid #6B21A8':'3px solid var(--border)' }}>
-                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                        <div style={{ width:32, height:32, borderRadius:8, background:'var(--purple-light)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                          {appt.pets?.photo_url ? <img src={appt.pets.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:8 }} /> : <i className="ti ti-paw" style={{ color:'var(--purple)', fontSize:14 }} />}
-                        </div>
-                        <div>
-                          <p style={{ fontSize:14, fontWeight:700, margin:0 }}>{appt.pets?.name || appt.pet_name || 'Mascota'}</p>
-                          {appt.owner_name && <p style={{ fontSize:11, color:'var(--text-muted)', margin:0 }}>Dueño: {appt.owner_name}</p>}
-                        </div>
-                      </div>
-                      <span className={`badge ${statusClass(appt.status)}`}>{statusLabel(appt.status)}</span>
-                    </div>
-                    <div style={{ display:'flex', gap:12, fontSize:12, color:'var(--text-secondary)' }}>
-                      <span><i className="ti ti-calendar" style={{ marginRight:4 }} />{formatDate(appt.date)}</span>
-                      <span><i className="ti ti-clock" style={{ marginRight:4 }} />{appt.time?.slice(0,5)}</span>
-                      {appt.notes && <span>· {appt.notes}</span>}
-                    </div>
-                    {appt.price && <p style={{ fontSize:12, fontWeight:700, color:'var(--purple)', margin:'6px 0 0' }}>${appt.price}</p>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+            <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
 
-      {/* MODAL VENTA RÁPIDA */}
-      {showQuickSale && (
-        <div onClick={e => e.target === e.currentTarget && setShowQuickSale(false)}
-          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
-          <div style={{ background:'white', borderRadius:20, width:'100%', maxWidth:480, maxHeight:'85vh', overflow:'auto', padding:20 }}>
-
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
-              <p style={{ fontSize:17, fontWeight:800, margin:0 }}>🛒 Venta rápida</p>
-              <button onClick={() => setShowQuickSale(false)} style={{ background:'var(--purple-light)', border:'none', borderRadius:'50%', width:32, height:32, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                <i className="ti ti-x" style={{ color:'var(--purple)', fontSize:16 }} />
-              </button>
-            </div>
-
-            {quickSuccess ? (
-              <div style={{ textAlign:'center', padding:'32px 0' }}>
-                <div style={{ fontSize:48, marginBottom:12 }}>✅</div>
-                <p style={{ fontSize:18, fontWeight:800, color:'var(--purple)', margin:0 }}>¡Venta registrada!</p>
-                <p style={{ fontSize:13, color:'var(--text-secondary)', margin:'8px 0 0' }}>Total: ${quickTotal.toFixed(2)}</p>
-              </div>
-            ) : (
-              <>
-                {/* Datos cliente (opcional) */}
-                <div style={{ background:'var(--bg)', borderRadius:12, padding:12, marginBottom:14 }}>
-                  <p style={{ fontSize:11, fontWeight:700, color:'var(--text-secondary)', textTransform:'uppercase', letterSpacing:'0.5px', margin:'0 0 8px' }}>Cliente (opcional)</p>
-                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-                    <input className="input" value={quickClient.name} onChange={e => setQuickClient(c => ({...c, name: e.target.value}))} placeholder="Nombre..." style={{ fontSize:13 }} />
-                    <input className="input" value={quickClient.phone} onChange={e => setQuickClient(c => ({...c, phone: e.target.value}))} placeholder="Teléfono..." style={{ fontSize:13 }} type="tel" />
-                  </div>
+              {/* Código Lumi */}
+              <div>
+                <label className="label">Código Lumi (opcional)</label>
+                <div style={{ display:'flex', gap:8 }}>
+                  <input className="input" value={form.lumi_code}
+                    onChange={e => { const v = e.target.value.toUpperCase(); setForm(f=>({...f,lumi_code:v})); searchLumi(v) }}
+                    placeholder="LMI-2026-XXXXXX" style={{ flex:1, fontFamily:'monospace' }} />
+                  {lumiLoading && <span style={{ alignSelf:'center', fontSize:12, color:'var(--text-muted)' }}>Buscando...</span>}
                 </div>
-
-                {/* Buscador de productos/servicios */}
-                <input className="input" value={quickSearch} onChange={e => setQuickSearch(e.target.value)}
-                  placeholder="🔍 Buscar producto o servicio..." style={{ marginBottom:10 }} />
-
-                {/* Lista de inventario */}
-                <div style={{ maxHeight:200, overflowY:'auto', display:'flex', flexDirection:'column', gap:6, marginBottom:14 }}>
-                  {quickInventory
-                    .filter(i => i.name.toLowerCase().includes(quickSearch.toLowerCase()))
-                    .filter(i => i.category === 'servicio' || i.stock > 0)
-                    .map(item => (
-                      <div key={item.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 12px', background:'var(--bg)', borderRadius:8 }}>
-                        <div>
-                          <p style={{ fontSize:13, fontWeight:600, margin:'0 0 2px' }}>{item.name}</p>
-                          <p style={{ fontSize:11, color:'var(--text-muted)', margin:0 }}>
-                            {item.category === 'servicio' ? '🛠 Servicio' : `📦 Stock: ${item.stock}`} · ${item.sale_price || 0}
-                          </p>
-                        </div>
-                        <button onClick={() => addToQuickCart(item)} className="btn btn-primary btn-sm">+ Agregar</button>
-                      </div>
-                    ))
-                  }
-                </div>
-
-                {/* Carrito */}
-                {quickCart.length > 0 && (
-                  <div style={{ border:'1px solid var(--border)', borderRadius:12, padding:12, marginBottom:14 }}>
-                    <p style={{ fontSize:13, fontWeight:700, margin:'0 0 10px' }}>🛒 Carrito</p>
-                    {quickCart.map(c => (
-                      <div key={c.id} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
-                        <p style={{ fontSize:13, flex:1, margin:0 }}>{c.name}</p>
-                        <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                          <button onClick={() => updateQuickQty(c.id, c.qty-1)} style={{ width:24, height:24, borderRadius:6, border:'1px solid var(--border)', background:'white', cursor:'pointer', fontWeight:700 }}>−</button>
-                          <span style={{ fontSize:13, fontWeight:700, minWidth:20, textAlign:'center' }}>{c.qty}</span>
-                          <button onClick={() => updateQuickQty(c.id, c.qty+1)} style={{ width:24, height:24, borderRadius:6, border:'1px solid var(--border)', background:'white', cursor:'pointer', fontWeight:700 }}>+</button>
-                        </div>
-                        <p style={{ fontSize:13, fontWeight:700, color:'var(--purple)', margin:0, minWidth:60, textAlign:'right' }}>${((c.sale_price||0)*c.qty).toFixed(2)}</p>
-                      </div>
-                    ))}
-                    <div style={{ borderTop:'1px solid var(--border)', marginTop:8, paddingTop:8, display:'flex', justifyContent:'space-between' }}>
-                      <p style={{ fontSize:13, fontWeight:700, margin:0 }}>Total</p>
-                      <p style={{ fontSize:16, fontWeight:900, color:'var(--purple)', margin:0 }}>${quickTotal.toFixed(2)}</p>
-                    </div>
+                {lumiPet && (
+                  <div style={{ marginTop:6, padding:'8px 12px', background:'#DCFCE7', borderRadius:8, fontSize:12, color:'#15803D', fontWeight:600 }}>
+                    ✓ {lumiPet.name} · {lumiPet.breed} {lumiPet.weight ? `· ${lumiPet.weight} kg` : ''}
                   </div>
                 )}
+              </div>
 
-                <div style={{ display:'flex', gap:10 }}>
-                  <button onClick={() => setShowQuickSale(false)} className="btn btn-secondary" style={{ flex:1, justifyContent:'center' }}>Cancelar</button>
-                  <button onClick={saveQuickSale} disabled={quickCart.length === 0 || quickSaving}
-                    className="btn btn-primary" style={{ flex:2, justifyContent:'center', background:'linear-gradient(135deg,#DC2626,#EF4444)' }}>
-                    <i className="ti ti-shopping-cart" style={{ fontSize:16 }} />
-                    {quickSaving ? 'Guardando...' : `Cobrar $${quickTotal.toFixed(2)}`}
-                  </button>
+              {/* Mascota y dueño */}
+              <div className="grid-2">
+                <div>
+                  <label className="label">Nombre mascota *</label>
+                  <input className="input" value={form.pet_name} onChange={e => setForm(f=>({...f,pet_name:e.target.value}))} placeholder="Max" style={{ borderColor: !form.pet_name.trim() ? '#FCA5A5' : undefined }} />
                 </div>
-              </>
-            )}
+                <div>
+                  <label className="label">Nombre dueño *</label>
+                  <input className="input" value={form.owner_name} onChange={e => setForm(f=>({...f,owner_name:e.target.value}))} placeholder="Juan García" style={{ borderColor: !form.owner_name.trim() ? '#FCA5A5' : undefined }} />
+                </div>
+              </div>
+
+              {/* Fecha y hora */}
+              <div className="grid-2">
+                <div>
+                  <label className="label">Fecha *</label>
+                  <input className="input" type="date" value={form.date} onChange={e => setForm(f=>({...f,date:e.target.value}))} />
+                </div>
+                <div>
+                  <label className="label">Hora *</label>
+                  <select className="input" value={form.time} onChange={e => setForm(f=>({...f,time:e.target.value}))}>
+                    {HOURS.map(h => <option key={h} value={h}>{h}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Servicio */}
+              <div>
+                <label className="label">Servicio</label>
+                <select className="input" value={form.service_id || ''} onChange={e => handleServiceChange(e.target.value || null)}>
+                  <option value="">— Seleccionar servicio (opcional) —</option>
+                  {services.map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}{s.is_bath_service ? ' 🛁' : ''}{s.sale_price ? ` — $${s.sale_price}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Panel de baño */}
+              {isBath && (
+                <div style={{ background:'var(--purple-lighter)', borderRadius:14, padding:14, display:'flex', flexDirection:'column', gap:12 }}>
+                  <p style={{ fontSize:12, fontWeight:700, color:'var(--purple)', textTransform:'uppercase', letterSpacing:'0.5px', margin:0 }}>🛁 Configuración del baño</p>
+
+                  {lumiPet?.weight && (
+                    <p style={{ fontSize:12, color:'var(--text-secondary)', margin:0 }}>
+                      Peso de {lumiPet.name}: <strong>{lumiPet.weight} kg</strong>
+                      {form.bath_size && <span style={{ marginLeft:8, color:'var(--purple)', fontWeight:700 }}>→ Talla sugerida: {BATH_LABELS[form.bath_size]?.label}</span>}
+                    </p>
+                  )}
+
+                  {/* Selector de talla */}
+                  <div>
+                    <label className="label">Talla</label>
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
+                      {['small','medium','large'].map(size => {
+                        const info = BATH_LABELS[size]
+                        const price = selectedService ? getBathPrice(selectedService, size) : null
+                        const isSelected = form.bath_size === size
+                        return (
+                          <button key={size} onClick={() => handleBathSize(size)}
+                            style={{ padding:'10px 8px', borderRadius:10, border:`2px solid ${isSelected?'var(--purple)':'var(--border)'}`, background: isSelected?'var(--purple-light)':'white', cursor:'pointer', textAlign:'center', transition:'all 0.15s' }}>
+                            <p style={{ fontSize:18, margin:'0 0 2px' }}>{info.icon}</p>
+                            <p style={{ fontSize:12, fontWeight:700, color: isSelected?'var(--purple)':'var(--text-primary)', margin:'0 0 2px' }}>{info.label}</p>
+                            <p style={{ fontSize:10, color:'var(--text-muted)', margin:'0 0 4px' }}>{info.desc}</p>
+                            {price && <p style={{ fontSize:13, fontWeight:800, color: isSelected?'var(--purple)':'var(--text-secondary)', margin:0 }}>${price}</p>}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Extras */}
+                  {bathExtrasAvailable.length > 0 && (
+                    <div>
+                      <label className="label">Extras</label>
+                      <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                        {bathExtrasAvailable.map(extra => {
+                          const selected = form.bath_extras.find(e => e.name === extra.name)
+                          return (
+                            <label key={extra.name} onClick={() => toggleExtra(extra)}
+                              style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 12px', background: selected?'var(--purple-light)':'white', borderRadius:8, border:`1px solid ${selected?'var(--purple)':'var(--border)'}`, cursor:'pointer', transition:'all 0.15s' }}>
+                              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                                <input type="checkbox" checked={!!selected} readOnly style={{ accentColor:'var(--purple)' }} />
+                                <span style={{ fontSize:13, fontWeight:600, color: selected?'var(--purple)':'var(--text-primary)' }}>{extra.name}</span>
+                              </div>
+                              <span style={{ fontSize:13, fontWeight:700, color:'var(--purple)' }}>+${extra.price}</span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Notas */}
+              <div>
+                <label className="label">Notas / Motivo</label>
+                <input className="input" value={form.notes} onChange={e => setForm(f=>({...f,notes:e.target.value}))} placeholder="Consulta general, vacunación..." />
+              </div>
+
+              {/* Estado */}
+              <div className="grid-2">
+                <div>
+                  <label className="label">Estado</label>
+                  <select className="input" value={form.status} onChange={e => setForm(f=>({...f,status:e.target.value}))}>
+                    <option value="pending">Pendiente</option>
+                    <option value="confirmed">Confirmada</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Precio total</label>
+                  <input className="input" type="number" value={form.price} onChange={e => setForm(f=>({...f,price:e.target.value}))} placeholder="0.00" style={{ fontWeight:700, color:'var(--purple)' }} />
+                </div>
+              </div>
+
+              {!canSave && <p style={{ fontSize:12, color:'#DC2626', margin:0 }}>* Nombre de mascota y dueño son obligatorios</p>}
+
+              <div style={{ display:'flex', gap:10 }}>
+                <button className="btn btn-secondary" onClick={() => setShowModal(false)} style={{ flex:1, justifyContent:'center' }}>Cancelar</button>
+                <button className="btn btn-primary" onClick={saveAppointment} disabled={!canSave} style={{ flex:2, justifyContent:'center', opacity: canSave?1:0.5 }}>
+                  Guardar cita
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
