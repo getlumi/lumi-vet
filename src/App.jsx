@@ -44,7 +44,13 @@ export default function App() {
   }, [])
 
   const fetchClinic = async (userId) => {
-    const { data } = await supabase.from('vet_clinics').select('*').eq('owner_id', userId).limit(1).single()
+    const { data, error } = await supabase
+      .from('vet_clinics')
+      .select('*, is_admin')
+      .eq('owner_id', userId)
+      .limit(1)
+      .single()
+    console.log('[Lumi] clinic data:', data, '| error:', error)
     setClinic(data || null)
     setLoading(false)
   }
@@ -134,7 +140,7 @@ export default function App() {
         </nav>
 
         {/* Botón Admin Global — solo visible si is_admin = true */}
-        {clinic.is_admin && (
+        {Boolean(clinic?.is_admin) && (
           <div style={{ padding:'0 8px 8px' }}>
             <button
               className={`nav-item ${page === 'admin' ? 'active' : ''}`}
