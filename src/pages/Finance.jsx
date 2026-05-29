@@ -76,7 +76,7 @@ export default function Finance({ clinic }) {
     if (!form.amount || !form.description) return
     setSaving(true)
     await supabase.from('vet_transactions').insert({
-      clinic_id: clinic.id, type: form.type, category: form.category,
+      clinic_id: clinic.id, type: 'income', category: form.category,
       description: form.description, amount: parseFloat(form.amount), date: form.date,
     })
     setSaving(false)
@@ -116,19 +116,16 @@ export default function Finance({ clinic }) {
   const exportExcel = () => {
     const { label } = getDateRange(period)
     const rows = transactions.map(t => ({
-      Fecha:        t.date,
-      Descripción:  t.description || '',
-      Categoría:    CATEGORY_LABELS[t.category] || t.category || '',
-      Tipo:         t.type === 'income' ? 'Ingreso' : 'Egreso',
-      Monto:        t.type === 'income' ? t.amount : -t.amount,
+      Fecha:       t.date,
+      Descripción: t.description || '',
+      Categoría:   CATEGORY_LABELS[t.category] || t.category || '',
+      Monto:       t.amount,
     }))
     rows.push({})
-    rows.push({ Fecha:'', Descripción:'TOTAL INGRESOS', Categoría:'', Tipo:'', Monto: income })
-    rows.push({ Fecha:'', Descripción:'TOTAL EGRESOS',  Categoría:'', Tipo:'', Monto: -expenses })
-    rows.push({ Fecha:'', Descripción:'GANANCIA NETA',  Categoría:'', Tipo:'', Monto: profit })
+    rows.push({ Fecha:'', Descripción:'TOTAL INGRESOS', Categoría:'', Monto: income })
 
     const ws = XLSX.utils.json_to_sheet(rows)
-    ws['!cols'] = [{ wch:12 },{ wch:30 },{ wch:14 },{ wch:10 },{ wch:12 }]
+    ws['!cols'] = [{ wch:12 },{ wch:30 },{ wch:14 },{ wch:12 }]
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Finanzas')
     XLSX.writeFile(wb, `Lumi-Finanzas-${clinic.name}-${label}.xlsx`)
@@ -151,23 +148,22 @@ export default function Finance({ clinic }) {
     // Métricas
     doc.setFontSize(10)
     doc.setTextColor(40)
-    doc.text(`Ingresos: ${formatMoney(income)}   Egresos: ${formatMoney(expenses)}   Ganancia: ${formatMoney(profit)}`, 14, 45)
+    doc.text(`Total ingresos: ${formatMoney(income)}   Registros: ${transactions.length}`, 14, 45)
 
     // Tabla
     autoTable(doc, {
       startY: 52,
-      head: [['Fecha', 'Descripción', 'Categoría', 'Tipo', 'Monto']],
+      head: [['Fecha', 'Descripción', 'Categoría', 'Monto']],
       body: transactions.map(t => [
         t.date,
         t.description || '—',
         CATEGORY_LABELS[t.category] || t.category || '—',
-        t.type === 'income' ? 'Ingreso' : 'Egreso',
-        (t.type === 'income' ? '+' : '-') + formatMoney(t.amount || 0),
+        '+' + formatMoney(t.amount || 0),
       ]),
       headStyles: { fillColor: [107, 33, 168], textColor: 255, fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [245, 243, 255] },
       styles: { fontSize: 9, cellPadding: 3 },
-      foot: [['', '', '', 'GANANCIA NETA', formatMoney(profit)]],
+      foot: [['', '', 'TOTAL', formatMoney(income)]],
       footStyles: { fillColor: [237, 233, 254], textColor: [107, 33, 168], fontStyle: 'bold' },
     })
 
@@ -205,12 +201,11 @@ export default function Finance({ clinic }) {
       </div>
 
       {/* Métricas */}
-      <div className="grid-4" style={{ marginBottom:20 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:14, marginBottom:20 }}>
         {[
-          { label:'Ingresos',  value: formatMoney(income),   icon:'ti-trending-up',   color:'#16A34A', bg:'#DCFCE7' },
-          { label:'Egresos',   value: formatMoney(expenses), icon:'ti-trending-down',  color:'#DC2626', bg:'#FEE2E2' },
-          { label:'Ganancia',  value: formatMoney(profit),   icon:'ti-coin',           color: profit >= 0 ? '#7C3AED' : '#DC2626', bg: profit >= 0 ? '#EDE9FE' : '#FEE2E2' },
-          { label:'Registros', value: transactions.length,   icon:'ti-receipt',        color:'#0EA5E9', bg:'#E0F2FE' },
+          { label:'Ingresos',  value: formatMoney(income),        icon:'ti-trending-up', color:'#16A34A', bg:'#DCFCE7' },
+          { label:'Promedio',  value: formatMoney(transactions.length ? income/transactions.length : 0), icon:'ti-chart-bar', color:'#7C3AED', bg:'#EDE9FE' },
+          { label:'Registros', value: transactions.length,        icon:'ti-receipt',     color:'#0EA5E9', bg:'#E0F2FE' },
         ].map(m => (
           <div key={m.label} className="stat-card">
             <div className="stat-icon" style={{ background: m.bg }}>
@@ -303,13 +298,9 @@ export default function Finance({ clinic }) {
                       {CATEGORY_LABELS[t.category] || t.category || '—'}
                     </span>
                   </td>
-                  <td>
-                    <span className={`badge ${t.type==='income'?'badge-green':'badge-red'}`}>
-                      {t.type === 'income' ? 'Ingreso' : 'Egreso'}
-                    </span>
-                  </td>
-                  <td style={{ fontWeight:800, color: t.type==='income'?'#16A34A':'#DC2626', whiteSpace:'nowrap' }}>
-                    {t.type === 'income' ? '+' : '-'}{formatMoney(t.amount || 0)}
+
+                  <td style={{ fontWeight:800, color:'#16A34A', whiteSpace:'nowrap' }}>
+                    +{formatMoney(t.amount || 0)}
                   </td>
                   <td>
                     <button className="btn btn-danger btn-icon btn-sm" onClick={() => deleteTransaction(t.id)}>
@@ -329,14 +320,7 @@ export default function Finance({ clinic }) {
           <div className="modal">
             <p style={{ fontSize:17, fontWeight:800, margin:'0 0 20px' }}>Registrar movimiento</p>
             <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-                {[{ val:'income', label:'💰 Ingreso' },{ val:'expense', label:'💸 Egreso' }].map(t => (
-                  <button key={t.val} onClick={() => setForm(f=>({...f,type:t.val}))}
-                    style={{ padding:'10px', borderRadius:10, border:`2px solid ${form.type===t.val?'var(--purple)':'var(--border)'}`, background: form.type===t.val?'var(--purple-light)':'white', cursor:'pointer', fontWeight:700, fontSize:13, color: form.type===t.val?'var(--purple)':'var(--text-secondary)' }}>
-                    {t.label}
-                  </button>
-                ))}
-              </div>
+              <input type="hidden" value="income" />
               <div className="grid-2">
                 <div>
                   <label className="label">Categoría</label>
