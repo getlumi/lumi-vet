@@ -8,7 +8,17 @@ const PLANS = [
 ]
 
 export default function Settings({ clinic, session, onUpdate }) {
-  const [form, setForm]         = useState({ name:clinic.name||'', address:clinic.address||'', city:clinic.city||'', phone:clinic.phone||'', whatsapp:clinic.whatsapp||'', email:clinic.email||'', description:clinic.description||'' })
+  const [form, setForm]         = useState({
+    name:        clinic.name        || '',
+    address:     clinic.address     || '',
+    city:        clinic.city        || '',
+    phone:       clinic.phone       || '',
+    whatsapp:    clinic.whatsapp    || '',
+    email:       clinic.email       || '',
+    description: clinic.description || '',
+    nombre_vet:  clinic.nombre_vet  || '',
+    cedula:      clinic.cedula      || '',
+  })
   const [saving, setSaving]     = useState(false)
   const [saved, setSaved]       = useState(false)
   const [uploadingLogo, setUploadingLogo] = useState(false)
@@ -53,7 +63,6 @@ export default function Settings({ clinic, session, onUpdate }) {
       <div className="card" style={{ marginBottom:16 }}>
         <p style={{ fontSize:13, fontWeight:700, color:'var(--text-secondary)', textTransform:'uppercase', letterSpacing:'0.8px', margin:'0 0 16px' }}>Logo de la clínica</p>
         <div style={{ display:'flex', alignItems:'center', gap:20 }}>
-          {/* Preview */}
           <div style={{ width:80, height:80, borderRadius:16, border:'2px dashed var(--border)', background:'var(--bg)', display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', flexShrink:0 }}>
             {logoUrl
               ? <img src={logoUrl} alt="Logo" style={{ width:'100%', height:'100%', objectFit:'contain', padding:4 }} />
@@ -97,6 +106,50 @@ export default function Settings({ clinic, session, onUpdate }) {
               }
             </div>
           ))}
+        </div>
+        <div style={{ marginTop:16, display:'flex', gap:10, alignItems:'center' }}>
+          <button className="btn btn-primary" onClick={save} disabled={saving}>
+            <i className="ti ti-device-floppy" style={{ fontSize:15 }} />
+            {saving ? 'Guardando...' : 'Guardar cambios'}
+          </button>
+          {saved && <span className="badge badge-green">✓ Guardado</span>}
+        </div>
+      </div>
+
+      {/* Datos del veterinario — para validez oficial */}
+      <div className="card" style={{ marginBottom:16, border:'1.5px solid rgba(107,33,168,0.2)', background:'rgba(107,33,168,0.02)' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
+          <div style={{ width:36, height:36, borderRadius:10, background:'rgba(107,33,168,0.1)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            <i className="ti ti-certificate" style={{ fontSize:18, color:'#6B21A8' }} />
+          </div>
+          <div>
+            <p style={{ fontSize:13, fontWeight:700, color:'var(--text-secondary)', textTransform:'uppercase', letterSpacing:'0.8px', margin:0 }}>Datos del veterinario responsable</p>
+            <p style={{ fontSize:11, color:'var(--text-muted)', margin:0 }}>Requeridos para validez oficial en carnets y documentos de viaje</p>
+          </div>
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+          <div style={{ gridColumn:'1/-1' }}>
+            <label className="label">Nombre completo del veterinario responsable</label>
+            <input
+              className="input"
+              placeholder="Ej: Dr. Juan Pérez González"
+              value={form.nombre_vet}
+              onChange={e => setForm(v=>({...v, nombre_vet:e.target.value}))}
+            />
+          </div>
+          <div style={{ gridColumn:'1/-1' }}>
+            <label className="label">Cédula profesional</label>
+            <input
+              className="input"
+              placeholder="Ej: 12345678"
+              value={form.cedula}
+              onChange={e => setForm(v=>({...v, cedula:e.target.value}))}
+            />
+            <p style={{ fontSize:11, color:'var(--text-muted)', margin:'6px 0 0' }}>
+              <i className="ti ti-info-circle" style={{ fontSize:12, verticalAlign:'middle', marginRight:4 }} />
+              La cédula se registra en la SEP y es pública. Aparecerá en los carnets y documentos generados por Lumi.
+            </p>
+          </div>
         </div>
         <div style={{ marginTop:16, display:'flex', gap:10, alignItems:'center' }}>
           <button className="btn btn-primary" onClick={save} disabled={saving}>
