@@ -1036,4 +1036,14 @@ export default function Patients({ clinic, openNew }) {
                       </div>
                     </div>
                     <button className="btn btn-primary" onClick={registerLumiPatient} style={{ width:'100%', justifyContent:'center' }}>Registrar en mi clinica</button>
-                  </div
+                  </div>
+                )}
+                <button className="btn btn-secondary" onClick={() => setShowNew(false)} style={{ justifyContent:'center' }}>Cancelar</button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
