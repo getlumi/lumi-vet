@@ -47,7 +47,7 @@ export default function Patients({ clinic, openNew }) {
   // Certificado de salud
   const [certForm, setCertForm] = useState({
     weight: '', temperature: '', condition: 'apto',
-    observations: '', valid_days: '10'
+    observations: '', valid_days: '10', firma_pin: ''
   })
 
   useEffect(() => { fetchAll() }, [])
@@ -273,49 +273,76 @@ export default function Patients({ clinic, openNew }) {
 
   // Guardar certificado de salud + generar PDF
   const saveCertificate = async () => {
+    // Validar PIN si la clínica tiene uno configurado
+    if (clinic.firma_pin) {
+      if (!certForm.firma_pin) {
+        alert('Ingresa tu PIN de firma para autorizar el certificado')
+        setSaving(false)
+        return
+      }
+      if (certForm.firma_pin !== clinic.firma_pin) {
+        alert('PIN incorrecto. Verifica tu PIN de firma en Ajustes.')
+        setSaving(false)
+        return
+      }
+    }
+
     setSaving(true)
     const validUntil = new Date()
     validUntil.setDate(validUntil.getDate() + parseInt(certForm.valid_days || 10))
 
+    const firmaVerificada = !!(clinic.firma_pin && certForm.firma_pin === clinic.firma_pin)
+
     const { data: cert, error } = await supabase.from('health_certificates').insert({
-      pet_id:          selected.pet_id,
-      clinic_id:       clinic.id,
-      vet_nombre:      clinic.nombre_vet  || null,
-      vet_cedula:      clinic.cedula      || null,
-      clinic_name:     clinic.name,
-      clinic_logo_url: clinic.logo_url    || null,
-      weight:          certForm.weight    ? parseFloat(certForm.weight) : null,
-      temperature:     certForm.temperature ? parseFloat(certForm.temperature) : null,
-      condition:       certForm.condition,
-      observations:    certForm.observations || null,
-      valid_until:     validUntil.toISOString().slice(0,10),
+      pet_id:              selected.pet_id,
+      clinic_id:           clinic.id,
+      vet_nombre:          clinic.nombre_vet  || null,
+      vet_cedula:          clinic.cedula      || null,
+      clinic_name:         clinic.name,
+      clinic_logo_url:     clinic.logo_url    || null,
+      weight:              certForm.weight      ? parseFloat(certForm.weight) : null,
+      temperature:         certForm.temperature ? parseFloat(certForm.temperature) : null,
+      condition:           certForm.condition,
+      observations:        certForm.observations || null,
+      valid_until:         validUntil.toISOString().slice(0,10),
+      firma_verificada:    firmaVerificada,
     }).select().single()
 
     if (error) { console.error(error); setSaving(false); return }
 
+    // Guardar código de verificación (primeros 8 chars del UUID)
+    const codigoVerificacion = cert.id.replace(/-/g,'').slice(0,8).toUpperCase()
+    await supabase.from('health_certificates')
+      .update({ codigo_verificacion: codigoVerificacion })
+      .eq('id', cert.id)
+
+    const certConCodigo = { ...cert, codigo_verificacion: codigoVerificacion, firma_verificada: firmaVerificada }
+
     // Notificar al dueño
     if (selected.owner_id) {
       await supabase.from('notifications').insert({
-        user_id: selected.owner_id, type: 'health_certificate',
-        title: 'Certificado de salud emitido',
-        body: `${clinic.name} emitio un certificado de salud para ${selected.pets?.name}. Valido hasta el ${validUntil.toLocaleDateString('es-MX',{day:'numeric',month:'long'})}.`,
+        user_id:     selected.owner_id,
+        type:        'health_certificate',
+        title:       'Certificado de salud emitido',
+        body:        `${clinic.name} emitio un certificado de salud para ${selected.pets?.name}. Valido hasta el ${validUntil.toLocaleDateString('es-MX',{day:'numeric',month:'long'})}.`,
         from_pet_id: selected.pet_id,
-        data: JSON.stringify({ cert_id: cert.id }), read: false,
+        data:        JSON.stringify({ cert_id: cert.id }),
+        read:        false,
       })
     }
 
-    // Generar PDF
-    generateCertPDF(cert)
+    // Generar PDF con QR
+    generateCertPDF(certConCodigo)
 
     await fetchLumiRecords(selected.pet_id)
     setShowCert(false)
-    setCertForm({ weight:'', temperature:'', condition:'apto', observations:'', valid_days:'10' })
+    setCertForm({ weight:'', temperature:'', condition:'apto', observations:'', valid_days:'10', firma_pin:'' })
     setPointsMsg('Certificado de salud emitido correctamente')
     setTimeout(() => setPointsMsg(null), 4000)
     setSaving(false)
   }
 
-  const generateCertPDF = (cert) => {
+  const generateCertPDF = async (cert) => {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
     const W = 210, M = 18
     const pet = selected.pets
@@ -544,10 +571,43 @@ export default function Patients({ clinic, openNew }) {
     if (vetCedula) { doc.text('Cedula Profesional: ' + vetCedula, M, y + 29) }
     doc.text(cert.clinic_name || clinic.name || '', M, y + 35)
 
-    doc.setFontSize(7)
-    doc.setTextColor(160, 160, 160)
-    doc.text('ID verificacion: ' + cert.id.slice(0, 16).toUpperCase(), W - M, y + 23, { align: 'right' })
-    doc.text('lumi-app-indol.vercel.app', W - M, y + 29, { align: 'right' })
+    // Badge firma verificada
+    if (cert.firma_verificada) {
+      doc.setFillColor(220, 252, 231)
+      doc.roundedRect(M, y + 40, 60, 8, 1, 1, 'F')
+      doc.setFontSize(7)
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(22, 163, 74)
+      doc.text('Firmado digitalmente por Lumi Vet', M + 2, y + 45)
+    }
+
+    // QR de verificación
+    if (cert.codigo_verificacion) {
+      const verifyUrl = 'https://lumi-app-indol.vercel.app?cert=' + cert.codigo_verificacion
+      const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=' + encodeURIComponent(verifyUrl)
+      try {
+        // Intentar cargar QR — si falla, mostrar texto
+        const qrImg = new Image()
+        qrImg.crossOrigin = 'anonymous'
+        qrImg.src = qrUrl
+        await new Promise((resolve) => { qrImg.onload = resolve; qrImg.onerror = resolve; setTimeout(resolve, 3000) })
+        if (qrImg.complete && qrImg.naturalWidth > 0) {
+          const canvas = document.createElement('canvas')
+          canvas.width = 80; canvas.height = 80
+          canvas.getContext('2d').drawImage(qrImg, 0, 0, 80, 80)
+          const qrBase64 = canvas.toDataURL('image/png')
+          doc.addImage(qrBase64, 'PNG', W - M - 22, y + 15, 22, 22)
+        }
+      } catch(e) { /* QR no disponible */ }
+
+      doc.setFontSize(7)
+      doc.setTextColor(100, 100, 100)
+      doc.setFont('helvetica', 'bold')
+      doc.text('Verificar autenticidad:', W - M, y + 42, { align: 'right' })
+      doc.setFont('helvetica', 'normal')
+      doc.setTextColor(107, 33, 168)
+      doc.text('lumi-app-indol.vercel.app?cert=' + cert.codigo_verificacion, W - M, y + 47, { align: 'right' })
+    }
 
     // Footer
     doc.setFillColor(248, 248, 250)
@@ -1037,6 +1097,29 @@ export default function Patients({ clinic, openNew }) {
                   {saving ? 'Generando...' : 'Emitir certificado + PDF'}
                 </button>
               </div>
+
+              {/* PIN de firma */}
+              {clinic.firma_pin && (
+                <div style={{ marginTop:12, background:'rgba(14,165,233,0.06)', border:'1px solid rgba(14,165,233,0.2)', borderRadius:10, padding:'12px 14px' }}>
+                  <p style={{ fontSize:12, fontWeight:700, color:'#0369A1', margin:'0 0 8px' }}>
+                    <i className="ti ti-shield-check" style={{ marginRight:6 }} />
+                    PIN de firma digital — requerido para certificar
+                  </p>
+                  <input
+                    className="input"
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="Ingresa tu PIN de firma"
+                    value={certForm.firma_pin}
+                    onChange={e => setCertForm(f=>({...f, firma_pin:e.target.value.replace(/\D/g,'')}))}
+                    style={{ letterSpacing:'4px', fontSize:16, textAlign:'center' }}
+                  />
+                  <p style={{ fontSize:11, color:'#0369A1', margin:'6px 0 0', opacity:0.8 }}>
+                    Al firmar, el certificado incluirá un QR verificable y badge de autenticidad
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>
