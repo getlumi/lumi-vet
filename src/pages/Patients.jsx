@@ -317,215 +317,251 @@ export default function Patients({ clinic, openNew }) {
 
   const generateCertPDF = (cert) => {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-    const W = 210, M = 20
+    const W = 210, M = 18
     const pet = selected.pets
     const owner = selected.profiles
 
-    // Borde exterior elegante
-    doc.setDrawColor(180, 180, 180)
-    doc.setLineWidth(0.3)
-    doc.rect(10, 10, W - 20, 277)
-    doc.rect(12, 12, W - 24, 273)
+    // Header elegante
+    doc.setFillColor(248, 248, 250)
+    doc.rect(0, 0, W, 48, 'F')
+    doc.setFillColor(107, 33, 168)
+    doc.rect(0, 0, W, 3, 'F')
 
-    // Header
-    doc.setFillColor(248, 245, 255)
-    doc.rect(12, 12, W - 24, 40, 'F')
-
-    // Logo / nombre clínica
-    doc.setFontSize(20)
+    doc.setFontSize(18)
     doc.setFont('helvetica', 'bold')
-    doc.setTextColor(107, 33, 168)
-    doc.text(clinic.name || 'CLINICA VETERINARIA', M + 2, 30)
+    doc.setTextColor(40, 40, 40)
+    doc.text(cert.clinic_name || clinic.name || 'Clinica Veterinaria', M, 22)
 
-    doc.setFontSize(9)
-    doc.setFont('helvetica', 'normal')
-    doc.setTextColor(100, 100, 100)
-    if (clinic.address) doc.text(clinic.address, M + 2, 37)
-    if (clinic.phone)   doc.text(`Tel: ${clinic.phone}`, M + 2, 42)
-
-    // Título certificado
-    doc.setFontSize(13)
-    doc.setFont('helvetica', 'bold')
-    doc.setTextColor(50, 50, 50)
-    doc.text('CERTIFICADO DE SALUD ANIMAL', W/2, 62, { align: 'center' })
-
-    doc.setFontSize(9)
+    doc.setFontSize(8)
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(120, 120, 120)
-    doc.text('Para uso en viajes y tramites oficiales', W/2, 68, { align: 'center' })
+    if (clinic.address) doc.text(clinic.address, M, 29)
+    if (clinic.phone)   doc.text('Tel: ' + clinic.phone, M, 34)
 
-    doc.setDrawColor(200, 200, 200)
-    doc.setLineWidth(0.3)
-    doc.line(M, 72, W - M, 72)
-
-    let y = 80
-
-    // ID certificado
     doc.setFontSize(8)
+    doc.setTextColor(107, 33, 168)
+    doc.setFont('helvetica', 'bold')
+    doc.text('LUMI', W - M, 18, { align: 'right' })
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7)
     doc.setTextColor(150, 150, 150)
-    doc.text(`No. de certificado: ${cert.id.slice(0,8).toUpperCase()}`, W - M, y, { align: 'right' })
-    doc.text(`Fecha de emision: ${new Date().toLocaleDateString('es-MX',{day:'numeric',month:'long',year:'numeric'})}`, W - M, y + 5, { align: 'right' })
-    doc.text(`Valido hasta: ${new Date(cert.valid_until+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'long',year:'numeric'})}`, W - M, y + 10, { align: 'right' })
+    doc.text('Plataforma veterinaria digital', W - M, 23, { align: 'right' })
+
+    doc.setFontSize(14)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(40, 40, 40)
+    doc.text('CERTIFICADO DE SALUD ANIMAL', W / 2, 58, { align: 'center' })
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(150, 150, 150)
+    doc.text('Documento oficial para tramites de viaje', W / 2, 64, { align: 'center' })
+
+    doc.setDrawColor(220, 220, 225)
+    doc.setLineWidth(0.4)
+    doc.line(M, 68, W - M, 68)
+
+    let y = 76
+
+    // Metadatos
+    doc.setFontSize(7.5)
+    doc.setTextColor(140, 140, 140)
+    doc.setFont('helvetica', 'normal')
+    doc.text('No. ' + cert.id.slice(0, 8).toUpperCase(), M, y)
+    doc.text('Emitido: ' + new Date(cert.issued_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' }), W / 2, y, { align: 'center' })
+    doc.text('Valido hasta: ' + new Date(cert.valid_until + 'T12:00:00').toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' }), W - M, y, { align: 'right' })
+    y += 10
+
+    // Dictamen — colores suaves sin cuarto parámetro
+    const isApto = cert.condition === 'apto'
+    const isCond = cert.condition === 'condicionado'
+    if (isApto) {
+      doc.setFillColor(240, 253, 244); doc.setDrawColor(134, 239, 172); doc.setTextColor(22, 163, 74)
+    } else if (isCond) {
+      doc.setFillColor(255, 247, 237); doc.setDrawColor(217, 119, 6); doc.setTextColor(161, 64, 0)
+    } else {
+      doc.setFillColor(254, 242, 242); doc.setDrawColor(220, 38, 38); doc.setTextColor(185, 28, 26)
+    }
+    doc.setLineWidth(0.5)
+    doc.roundedRect(M, y, W - (M * 2), 14, 2, 2, 'FD')
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(11)
+    const condLabel = isApto ? 'APTO PARA VIAJAR' : isCond ? 'APTO CON CONDICIONES' : 'NO APTO PARA VIAJAR'
+    doc.text(condLabel, W / 2, y + 9, { align: 'center' })
+    y += 20
 
     // Datos mascota
-    doc.setFontSize(10)
     doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8)
     doc.setTextColor(107, 33, 168)
     doc.text('DATOS DE LA MASCOTA', M, y)
-    y += 6
-
-    doc.setFillColor(250, 248, 255)
-    doc.rect(M, y, W - (M*2), 28, 'F')
-    doc.setDrawColor(220, 210, 240)
-    doc.rect(M, y, W - (M*2), 28)
+    y += 4
+    doc.setDrawColor(220, 220, 225)
+    doc.setLineWidth(0.3)
+    doc.line(M, y, W - M, y)
     y += 6
 
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(12)
     doc.setTextColor(30, 30, 30)
-    doc.text(pet?.name || '—', M + 4, y)
+    doc.text(pet?.name || '—', M, y)
+    if (pet?.lumi_id) {
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(8)
+      doc.setTextColor(107, 33, 168)
+      doc.text('ID: ' + pet.lumi_id, W - M, y, { align: 'right' })
+    }
+    y += 6
 
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(9)
     doc.setTextColor(80, 80, 80)
+    const edad = pet?.birthdate ? Math.floor((Date.now() - new Date(pet.birthdate)) / (1000 * 60 * 60 * 24 * 365.25)) + ' anos' : '—'
+    doc.text('Especie: ' + (pet?.pet_type || '—'), M, y)
+    doc.text('Raza: ' + (pet?.breed || '—'), M + 45, y)
+    doc.text('Genero: ' + (pet?.gender || '—'), M + 100, y)
+    doc.text('Edad: ' + edad, M + 145, y)
     y += 6
-    const edad = pet?.birthdate ? `${Math.floor((Date.now()-new Date(pet.birthdate))/(1000*60*60*24*365.25))} años` : '—'
-    doc.text(`Especie: ${pet?.pet_type || '—'}`, M + 4, y)
-    doc.text(`Raza: ${pet?.breed || '—'}`, M + 40, y)
-    doc.text(`Genero: ${pet?.gender || '—'}`, M + 90, y)
-    doc.text(`Edad: ${edad}`, M + 130, y)
-    y += 6
-    if (pet?.lumi_id) {
-      doc.setFont('helvetica', 'bold')
-      doc.setTextColor(107, 33, 168)
-      doc.text(`ID Lumi: ${pet.lumi_id}`, M + 4, y)
-      doc.setFont('helvetica', 'normal')
-      doc.setTextColor(80, 80, 80)
+    if (cert.weight || cert.temperature) {
+      doc.setTextColor(100, 100, 100)
+      if (cert.weight)      doc.text('Peso: ' + cert.weight + ' kg', M, y)
+      if (cert.temperature) doc.text('Temperatura: ' + cert.temperature + ' C', M + 45, y)
+      y += 6
     }
-    if (certForm.weight)      doc.text(`Peso: ${certForm.weight} kg`, M + 60, y)
-    if (certForm.temperature) doc.text(`Temp: ${certForm.temperature} C`, M + 100, y)
-    y += 14
+    y += 4
 
-    // Dueño
+    // Datos propietario
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(10)
+    doc.setFontSize(8)
     doc.setTextColor(107, 33, 168)
     doc.text('DATOS DEL PROPIETARIO', M, y)
-    y += 6
-
-    doc.setFillColor(250, 248, 255)
-    doc.rect(M, y, W - (M*2), 18, 'F')
-    doc.setDrawColor(220, 210, 240)
-    doc.rect(M, y, W - (M*2), 18)
+    y += 4
+    doc.setDrawColor(220, 220, 225)
+    doc.line(M, y, W - M, y)
     y += 6
 
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(9)
     doc.setTextColor(60, 60, 60)
-    doc.text(`Nombre: ${owner?.name || '—'}`, M + 4, y)
-    if (owner?.phone) doc.text(`Tel: ${owner.phone}`, M + 90, y)
+    doc.text('Nombre: ' + (owner?.name || '—'), M, y)
+    if (owner?.phone) doc.text('Tel: ' + owner.phone, M + 90, y)
     y += 6
-    if (owner?.email) doc.text(`Email: ${owner.email}`, M + 4, y)
-    y += 16
+    if (owner?.email) { doc.text('Email: ' + owner.email, M, y); y += 6 }
+    y += 4
 
-    // Dictamen
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(10)
-    doc.setTextColor(107, 33, 168)
-    doc.text('DICTAMEN DE SALUD', M, y)
-    y += 6
-
-    const condColor = cert.condition === 'apto' ? [22, 163, 74] : [220, 38, 38]
-    doc.setFillColor(...condColor, 15)
-    doc.rect(M, y, W - (M*2), 16, 'F')
-    doc.setDrawColor(...condColor)
-    doc.rect(M, y, W - (M*2), 16)
-    y += 6
-
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(13)
-    doc.setTextColor(...condColor)
-    const condLabel = cert.condition === 'apto' ? 'APTO PARA VIAJAR' : cert.condition === 'condicionado' ? 'APTO CON CONDICIONES' : 'NO APTO'
-    doc.text(condLabel, W/2, y + 2, { align: 'center' })
-    y += 18
-
+    // Observaciones
     if (cert.observations) {
       doc.setFont('helvetica', 'bold')
+      doc.setFontSize(8)
+      doc.setTextColor(107, 33, 168)
+      doc.text('OBSERVACIONES', M, y)
+      y += 4
+      doc.setDrawColor(220, 220, 225)
+      doc.line(M, y, W - M, y)
+      y += 6
+      doc.setFont('helvetica', 'normal')
       doc.setFontSize(9)
       doc.setTextColor(60, 60, 60)
-      doc.text('Observaciones:', M, y)
-      y += 5
-      doc.setFont('helvetica', 'normal')
-      const lines = doc.splitTextToSize(cert.observations, W - (M*2) - 4)
-      doc.text(lines, M, y)
-      y += lines.length * 5 + 6
+      const obsLines = doc.splitTextToSize(cert.observations, W - (M * 2))
+      doc.text(obsLines, M, y)
+      y += obsLines.length * 5 + 6
     }
 
     // Vacunas
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(10)
+    doc.setFontSize(8)
     doc.setTextColor(107, 33, 168)
     doc.text('VACUNAS REGISTRADAS', M, y)
+    y += 4
+    doc.setDrawColor(220, 220, 225)
+    doc.line(M, y, W - M, y)
     y += 6
 
     if (vaccines.length === 0) {
       doc.setFont('helvetica', 'italic')
-      doc.setFontSize(9)
-      doc.setTextColor(150, 150, 150)
-      doc.text('Sin vacunas registradas', M, y)
+      doc.setFontSize(8.5)
+      doc.setTextColor(160, 160, 160)
+      doc.text('Sin vacunas registradas en el sistema', M, y)
       y += 8
     } else {
-      vaccines.slice(0, 5).forEach((v, idx) => {
-        if (idx % 2 === 0) { doc.setFillColor(250, 248, 255) } else { doc.setFillColor(255, 255, 255) }
-        doc.rect(M, y - 3, W - (M*2), 12, 'F')
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(7.5)
+      doc.setTextColor(120, 120, 120)
+      doc.text('VACUNA', M, y)
+      doc.text('APLICADA', M + 80, y)
+      doc.text('REFUERZO', M + 125, y)
+      doc.text('ESTADO', W - M, y, { align: 'right' })
+      y += 3
+      doc.setDrawColor(200, 200, 205)
+      doc.line(M, y, W - M, y)
+      y += 5
+
+      vaccines.slice(0, 6).forEach(v => {
+        if (y > 235) { doc.addPage(); y = 20 }
         doc.setFont('helvetica', 'bold')
-        doc.setFontSize(9)
+        doc.setFontSize(8.5)
         doc.setTextColor(40, 40, 40)
-        doc.text(v.name || '—', M + 2, y + 3)
+        doc.text(v.name || '—', M, y)
         doc.setFont('helvetica', 'normal')
-        doc.setTextColor(100, 100, 100)
-        const applied = v.applied_date ? new Date(v.applied_date+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'short',year:'numeric'}) : '—'
-        doc.text(`Aplicada: ${applied}`, M + 60, y + 3)
+        doc.setFontSize(8)
+        doc.setTextColor(80, 80, 80)
+        const applied = v.applied_date ? new Date(v.applied_date + 'T12:00:00').toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
+        const next = v.next_date ? new Date(v.next_date + 'T12:00:00').toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
+        doc.text(applied, M + 80, y)
+        doc.text(next, M + 125, y)
         if (v.registered_by === 'vet') {
-          doc.setTextColor(22, 163, 74)
-          doc.setFont('helvetica', 'bold')
-          doc.text('Verificado', W - M - 2, y + 3, { align: 'right' })
+          doc.setTextColor(22, 163, 74); doc.setFont('helvetica', 'bold')
+          doc.text('Verificado', W - M, y, { align: 'right' })
+        } else {
+          doc.setTextColor(160, 160, 160); doc.setFont('helvetica', 'normal')
+          doc.text('Manual', W - M, y, { align: 'right' })
         }
-        y += 12
+        y += 4
+        doc.setDrawColor(235, 235, 238)
+        doc.setLineWidth(0.2)
+        doc.line(M, y, W - M, y)
+        y += 4
       })
     }
 
-    y += 8
+    y += 6
 
     // Firma
-    doc.setDrawColor(180, 180, 180)
-    doc.setLineWidth(0.3)
-    doc.line(M, y + 20, M + 70, y + 20)
+    if (y > 230) { doc.addPage(); y = 20 }
+    doc.setDrawColor(180, 180, 185)
+    doc.setLineWidth(0.4)
+    doc.line(M, y + 18, M + 80, y + 18)
+
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(9)
-    doc.setTextColor(60, 60, 60)
-    doc.text(clinic.nombre_vet ? `Dr. ${clinic.nombre_vet}` : 'Medico Veterinario', M, y + 25)
-    if (clinic.cedula) {
-      doc.setFont('helvetica', 'normal')
-      doc.setFontSize(8)
-      doc.setTextColor(100, 100, 100)
-      doc.text(`Cedula Profesional: ${clinic.cedula}`, M, y + 30)
-    }
+    doc.setTextColor(40, 40, 40)
+    const vetNombre = cert.vet_nombre || clinic.nombre_vet || 'Medico Veterinario'
+    doc.text('Dr. ' + vetNombre, M, y + 23)
+
     doc.setFont('helvetica', 'normal')
-    doc.text(clinic.name || '', M, y + 35)
+    doc.setFontSize(8)
+    doc.setTextColor(100, 100, 100)
+    const vetCedula = cert.vet_cedula || clinic.cedula
+    if (vetCedula) { doc.text('Cedula Profesional: ' + vetCedula, M, y + 29) }
+    doc.text(cert.clinic_name || clinic.name || '', M, y + 35)
+
+    doc.setFontSize(7)
+    doc.setTextColor(160, 160, 160)
+    doc.text('ID verificacion: ' + cert.id.slice(0, 16).toUpperCase(), W - M, y + 23, { align: 'right' })
+    doc.text('lumi-app-indol.vercel.app', W - M, y + 29, { align: 'right' })
 
     // Footer
-    doc.setFillColor(248, 245, 255)
-    doc.rect(12, 267, W - 24, 18, 'F')
+    doc.setFillColor(248, 248, 250)
+    doc.rect(0, 277, W, 20, 'F')
+    doc.setFillColor(107, 33, 168)
+    doc.rect(0, 277, W, 1, 'F')
     doc.setFontSize(7)
     doc.setTextColor(150, 150, 150)
     doc.setFont('helvetica', 'normal')
-    doc.text('Documento generado por Lumi — La luz de tu mascota | lumi-app-indol.vercel.app', W/2, 274, { align: 'center' })
-    doc.text('Los requisitos de viaje pueden variar. Verifique con autoridades competentes antes de viajar.', W/2, 279, { align: 'center' })
+    doc.text('Documento generado por Lumi — La luz de tu mascota | hola@getlumi.mx', W / 2, 282, { align: 'center' })
+    doc.text('Los requisitos de viaje pueden variar segun destino. Verifique con las autoridades antes de viajar.', W / 2, 287, { align: 'center' })
 
-    doc.save(`Certificado_Salud_${pet?.name || 'mascota'}_${new Date().toISOString().slice(0,10)}.pdf`)
+    doc.save('Certificado_Salud_' + (pet?.name || 'mascota') + '_' + new Date().toISOString().slice(0, 10) + '.pdf')
   }
-
   const calcAge = (bd) => {
     if (!bd) return null
     const y = Math.floor((Date.now() - new Date(bd)) / (1000*60*60*24*365.25))
@@ -1047,4 +1083,3 @@ export default function Patients({ clinic, openNew }) {
     </div>
   )
 }
-// v2
