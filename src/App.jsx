@@ -5,7 +5,7 @@ import Dashboard from './pages/Dashboard'
 import Appointments from './pages/Appointments'
 import Patients from './pages/Patients'
 import Inventory from './pages/Inventory'
-import Finance from './pages/Finance'
+import AdminGlobal from './pages/AdminGlobal'
 import Services from './pages/Services'
 import ChatVet from './pages/ChatVet'
 import Settings from './pages/Settings'
@@ -13,14 +13,14 @@ import OnboardingVet from './pages/OnboardingVet'
 import Admin from './pages/Admin'
 
 const NAV = [
-  { id: 'dashboard',    icon: 'ti-layout-dashboard', label: 'Dashboard',   plans: ['basic','pro','plus'] },
-  { id: 'appointments', icon: 'ti-calendar',          label: 'Agenda',      plans: ['basic','pro','plus'] },
-  { id: 'patients',     icon: 'ti-paw',               label: 'Pacientes',   plans: ['pro','plus'] },
-  { id: 'services',     icon: 'ti-stethoscope',       label: 'Servicios',   plans: ['pro','plus'] },
-  { id: 'inventory',    icon: 'ti-package',            label: 'Inventario',  plans: ['pro','plus'] },
-  { id: 'finance',      icon: 'ti-chart-bar',          label: 'Finanzas',    plans: ['pro','plus'] },
-  { id: 'chat',         icon: 'ti-message-circle',     label: 'Mensajes',    plans: ['pro','plus'] },
-  { id: 'settings',     icon: 'ti-settings',           label: 'Ajustes',     plans: ['basic','pro','plus'] },
+  { id: 'dashboard',    icon: 'ti-layout-dashboard', label: 'Dashboard',    plans: ['basic','pro','plus'] },
+  { id: 'appointments', icon: 'ti-calendar',          label: 'Agenda',       plans: ['basic','pro','plus'] },
+  { id: 'patients',     icon: 'ti-paw',               label: 'Pacientes',    plans: ['pro','plus'] },
+  { id: 'services',     icon: 'ti-stethoscope',       label: 'Servicios',    plans: ['pro','plus'] },
+  { id: 'inventory',    icon: 'ti-package',            label: 'Inventario',   plans: ['pro','plus'] },
+  { id: 'clinic-admin', icon: 'ti-chart-dots',         label: 'Admin Global', plans: ['basic','pro','plus'] },
+  { id: 'chat',         icon: 'ti-message-circle',     label: 'Mensajes',     plans: ['pro','plus'] },
+  { id: 'settings',     icon: 'ti-settings',           label: 'Ajustes',      plans: ['basic','pro','plus'] },
 ]
 
 export default function App() {
@@ -88,13 +88,13 @@ export default function App() {
             onNavigateAppointment={(form) => navigate('appointments', { appointmentForm: form })}
           />
         )
-      case 'services':  return <Services  clinic={clinic} session={session} />
-      case 'inventory': return <Inventory clinic={clinic} session={session} />
-      case 'finance':   return <Finance   clinic={clinic} session={session} />
-      case 'chat':      return <ChatVet   clinic={clinic} session={session} />
-      case 'settings':  return <Settings  clinic={clinic} session={session} onUpdate={setClinic} />
-      case 'admin':     return <Admin     clinic={clinic} session={session} />
-      default:          return <Dashboard clinic={clinic} session={session} onNavigate={navigate} />
+      case 'services':     return <Services     clinic={clinic} session={session} />
+      case 'inventory':    return <Inventory    clinic={clinic} session={session} />
+      case 'clinic-admin': return <AdminGlobal  clinic={clinic} session={session} />
+      case 'chat':         return <ChatVet      clinic={clinic} session={session} />
+      case 'settings':     return <Settings     clinic={clinic} session={session} onUpdate={setClinic} />
+      case 'admin':        return <Admin        clinic={clinic} session={session} />
+      default:             return <Dashboard    clinic={clinic} session={session} onNavigate={navigate} />
     }
   }
 
@@ -114,7 +114,6 @@ export default function App() {
               </p>
             </div>
           </div>
-          {/* Logo o nombre de la clínica */}
           <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 10px', background:'rgba(255,255,255,0.05)', borderRadius:10, border:'1px solid rgba(255,255,255,0.08)' }}>
             {clinic.logo_url ? (
               <img src={clinic.logo_url} alt={clinic.name} style={{ width:32, height:32, borderRadius:8, objectFit:'contain', background:'white', padding:3 }} />
@@ -139,7 +138,7 @@ export default function App() {
           ))}
         </nav>
 
-        {/* Botón Admin Global — solo visible si is_admin = true */}
+        {/* Botón Admin Global Lumi — solo si is_admin = true */}
         {Boolean(clinic?.is_admin) && (
           <div style={{ padding:'0 8px 8px' }}>
             <button
