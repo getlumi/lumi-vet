@@ -17,7 +17,7 @@ const NAV = [
   { id: 'patients',     icon: 'ti-paw',               label: 'Pacientes',    plans: ['pro','plus'] },
   { id: 'services',     icon: 'ti-stethoscope',       label: 'Servicios',    plans: ['pro','plus'] },
   { id: 'inventory',    icon: 'ti-package',            label: 'Inventario',   plans: ['pro','plus'] },
-  { id: 'chat',         icon: 'ti-message-circle',     label: 'Mensajes',     plans: ['pro','plus'] },
+
   { id: 'settings',     icon: 'ti-settings',           label: 'Ajustes',      plans: ['basic','pro','plus'] },
 ]
 
