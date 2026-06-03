@@ -5,9 +5,17 @@ const HOURS = ['07:00','07:30','08:00','08:30','09:00','09:30','10:00','10:30','
 const STATUS_COLORS = { pending:'badge-amber', confirmed:'badge-green', completed:'badge-purple', cancelled:'badge-red' }
 const STATUS_LABELS = { pending:'Pendiente', confirmed:'Confirmada', completed:'Completada', cancelled:'Cancelada' }
 
-export default function Appointments({
-  const localToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Cancun' }).format(new Date())
- ({ clinic, initialForm }) {
+// Fuera del componente — siempre recalcula al llamarse
+const localToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Cancun' }).format(new Date())
+const emptyForm  = () => ({
+  lumi_code:'', pet_id:null, pet_name:'', owner_name:'',
+  date: localToday(),
+  time:'09:00', notes:'', status:'confirmed', price:'',
+  service_id: null, service_name:'',
+  bath_size: null, bath_extras: [],
+})
+
+export default function Appointments({ clinic, initialForm }) {
   const [appointments, setAppointments] = useState([])
   const [services, setServices]         = useState([])
   const [selectedDate, setSelectedDate] = useState(localToday())
@@ -15,15 +23,7 @@ export default function Appointments({
   const [loading, setLoading]           = useState(true)
   const [lumiLoading, setLumiLoading]   = useState(false)
   const [lumiPet, setLumiPet]           = useState(null)
-
-  const emptyForm = () => ({
-    lumi_code:'', pet_id:null, pet_name:'', owner_name:'',
-    date: localToday(),
-    time:'09:00', notes:'', status:'confirmed', price:'',
-    service_id: null, service_name:'',
-    bath_size: null, bath_extras: [],
-  })
-  const [form, setForm] = useState(initialForm || emptyForm())
+  const [form, setForm]                 = useState(initialForm || emptyForm())
 
   useEffect(() => { fetchAppointments() }, [selectedDate])
   useEffect(() => { fetchServices() }, [])
@@ -40,7 +40,6 @@ export default function Appointments({
     setLoading(false)
   }
 
-  // FIX: leer de vet_services, no de vet_inventory
   const fetchServices = async () => {
     const { data } = await supabase
       .from('vet_services')
@@ -48,7 +47,6 @@ export default function Appointments({
       .eq('clinic_id', clinic.id)
       .eq('is_active', true)
       .order('name')
-    // mapear price → sale_price para compatibilidad con el resto del código
     setServices((data || []).map(s => ({ ...s, sale_price: s.price })))
   }
 
@@ -165,7 +163,6 @@ export default function Appointments({
     fetchAppointments()
   }
 
-  const formatDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString('es-MX', { weekday:'long', day:'numeric', month:'long' })
   const changeDay = (days) => {
     const d = new Date(selectedDate + 'T12:00:00')
     d.setDate(d.getDate() + days)
@@ -329,6 +326,7 @@ export default function Appointments({
               {isBath && (
                 <div style={{ background:'var(--purple-lighter, #F5F3FF)', borderRadius:14, padding:14, display:'flex', flexDirection:'column', gap:12 }}>
                   <p style={{ fontSize:12, fontWeight:700, color:'var(--purple)', textTransform:'uppercase', letterSpacing:'0.5px', margin:0 }}>🛁 Configuración del baño</p>
+
                   {form.bath_size && (
                     <div style={{ background:'var(--purple)', borderRadius:10, padding:'8px 14px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                       <span style={{ fontSize:13, color:'rgba(255,255,255,0.8)', fontWeight:600 }}>Total estimado</span>
@@ -339,7 +337,7 @@ export default function Appointments({
                   {lumiPet?.weight && (
                     <p style={{ fontSize:12, color:'var(--text-secondary)', margin:0 }}>
                       Peso de {lumiPet.name}: <strong>{lumiPet.weight} kg</strong>
-                      {form.bath_size && <span style={{ marginLeft:8, color:'var(--purple)', fontWeight:700 }}>→ Talla sugerida: {BATH_LABELS[form.bath_size]?.label}</span>}
+                      {form.bath_size && <span style={{ marginLeft:8, color:'var(--purple)', fontWeight:700 }}>→ Talla: {BATH_LABELS[form.bath_size]?.label}</span>}
                     </p>
                   )}
 
@@ -356,7 +354,7 @@ export default function Appointments({
                             <p style={{ fontSize:18, margin:'0 0 2px' }}>{info.icon}</p>
                             <p style={{ fontSize:12, fontWeight:700, color: isSelected?'var(--purple)':'var(--text-primary)', margin:'0 0 2px' }}>{info.label}</p>
                             <p style={{ fontSize:10, color:'var(--text-muted)', margin:'0 0 4px' }}>{info.desc}</p>
-                            {price && <p style={{ fontSize:13, fontWeight:800, color: isSelected?'var(--purple)':'var(--text-secondary)', margin:0 }}>${price}</p>}
+                            {price != null && <p style={{ fontSize:13, fontWeight:800, color: isSelected?'var(--purple)':'var(--text-secondary)', margin:0 }}>${price}</p>}
                           </button>
                         )
                       })}
