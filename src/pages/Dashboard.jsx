@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
-export default function Dashboard({ clinic, session, onNavigate }) {
+export default function Dashboard({
+  const localToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Cancun' }).format(new Date())
+ ({ clinic, session, onNavigate }) {
   const [stats, setStats]     = useState({ appointments:0, patients:0, pendingAppts:0 })
   const [today, setToday]     = useState([])
   const [loading, setLoading] = useState(true)
@@ -23,7 +25,7 @@ export default function Dashboard({ clinic, session, onNavigate }) {
 
   const fetchAll = async () => {
     try {
-      const todayStr = new Date().toISOString().slice(0,10)
+      const todayStr = localToday()
       const [apptRes, lumiRes, regularRes, todayRes, pendingRes] = await Promise.all([
         supabase.from('vet_appointments').select('*', { count:'exact', head:true }).eq('clinic_id', clinic.id),
         supabase.from('vet_patients').select('*', { count:'exact', head:true }).eq('clinic_id', clinic.id),
@@ -82,7 +84,7 @@ export default function Dashboard({ clinic, session, onNavigate }) {
   const saveQuickSale = async () => {
     if (quickCart.length === 0) return
     setQuickSaving(true)
-    const today = new Date().toISOString().slice(0,10)
+    const today = localToday()
     try {
       const clientNote = quickClient.name ? ' — ' + quickClient.name + (quickClient.phone ? ' ' + quickClient.phone : '') : ''
       for (const item of quickCart) {
@@ -134,7 +136,7 @@ export default function Dashboard({ clinic, session, onNavigate }) {
 
   const statusLabel = (s) => s==='confirmed'?'Confirmada':s==='completed'?'Completada':s==='cancelled'?'Cancelada':'Pendiente'
   const statusClass = (s) => s==='confirmed'?'badge-green':s==='completed'?'badge-purple':s==='cancelled'?'badge-red':'badge-amber'
-  const isToday = (d) => d === new Date().toISOString().slice(0,10)
+  const isToday = (d) => d === localToday()
   const formatDate = (d) => {
     if (isToday(d)) return 'Hoy'
     return new Date(d+'T12:00:00').toLocaleDateString('es-MX',{weekday:'short',day:'numeric',month:'short'})
