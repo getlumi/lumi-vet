@@ -40,6 +40,8 @@ export default function Patients({ clinic, openNew }) {
   const [serviceDesc, setServiceDesc]       = useState('')
   const [servicePrice, setServicePrice]     = useState('')
   const [cartItems, setCartItems]           = useState([])
+  const [vetServices, setVetServices]       = useState([])
+  const [selectedServiceId, setSelectedServiceId] = useState('')
   const [invSearch, setInvSearch]           = useState('')
 
   const [recordForm, setRecordForm]         = useState({ diagnosis:'', treatment:'', notes:'', weight:'', temperature:'', next_visit:'' })
@@ -71,6 +73,12 @@ export default function Patients({ clinic, openNew }) {
       .from('vet_inventory').select('id,name,unit,sale_price,stock,category')
       .eq('clinic_id', clinic.id).gt('stock', 0).order('name')
     setInventory(inv || [])
+
+    const { data: svcs } = await supabase
+      .from('vet_services')
+      .select('id,name,price,is_bath_service,price_small,price_medium,price_large,small_max_kg,medium_max_kg,large_max_kg,extra_1_name,extra_1_price,extra_2_name,extra_2_price,extra_3_name,extra_3_price')
+      .eq('clinic_id', clinic.id).eq('is_active', true).order('name')
+    setVetServices(svcs || [])
   }
 
   const fetchLumiRecords = async (petId) => {
@@ -556,9 +564,6 @@ export default function Patients({ clinic, openNew }) {
 
     // Firma
     if (y > 230) { doc.addPage(); y = 20 }
-    doc.setDrawColor(180, 180, 185)
-    doc.setLineWidth(0.4)
-    doc.line(M, y + 18, M + 80, y + 18)
 
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(9)
@@ -573,14 +578,21 @@ export default function Patients({ clinic, openNew }) {
     if (vetCedula) { doc.text('Cedula Profesional: ' + vetCedula, M, y + 29) }
     doc.text(cert.clinic_name || clinic.name || '', M, y + 35)
 
-    // Badge firma verificada
+    // Badge firma verificada — prominente
     if (cert.firma_verificada) {
       doc.setFillColor(220, 252, 231)
-      doc.roundedRect(M, y + 40, 60, 8, 1, 1, 'F')
-      doc.setFontSize(7)
+      doc.setDrawColor(134, 239, 172)
+      doc.setLineWidth(0.5)
+      doc.roundedRect(M, y + 18, 90, 10, 2, 2, 'FD')
+      doc.setFontSize(8)
       doc.setFont('helvetica', 'bold')
       doc.setTextColor(22, 163, 74)
-      doc.text('Firmado digitalmente por Lumi Vet', M + 2, y + 45)
+      doc.text('✓ Firmado digitalmente · Lumi Vet', M + 3, y + 25)
+    } else {
+      doc.setFontSize(8)
+      doc.setFont('helvetica', 'normal')
+      doc.setTextColor(150, 150, 150)
+      doc.text('Médico Veterinario', M, y + 23)
     }
 
     // QR de verificación
@@ -763,7 +775,7 @@ export default function Patients({ clinic, openNew }) {
           )}
 
           <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap' }}>
-            <button className="btn btn-primary btn-sm" onClick={() => { setShowVisit(true); setVisitType('servicio'); setCartItems([]); setServiceDesc(''); setServicePrice('') }}><i className="ti ti-plus" /> + Visita</button>
+            <button className="btn btn-primary btn-sm" onClick={() => { setShowVisit(true); setVisitType('servicio'); setCartItems([]); setServiceDesc(''); setServicePrice(''); setSelectedServiceId('') }}><i className="ti ti-plus" /> + Visita</button>
             <button className="btn btn-secondary btn-sm" onClick={() => setShowRecord(true)}><i className="ti ti-file-plus" /> Consulta</button>
             <button className="btn btn-secondary btn-sm" onClick={() => { setShowAppt(true); setApptForm(f=>({...f, lumi_code:selectedType==='lumi'?(selected.pets?.lumi_id||''):''})) }}><i className="ti ti-calendar-plus" /> Agendar cita</button>
             {selectedType === 'lumi' && (<>
@@ -880,8 +892,27 @@ export default function Patients({ clinic, openNew }) {
             </div>
             {visitType==='servicio' && (
               <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-                <div><label className="label">Descripcion *</label><input className="input" value={serviceDesc} onChange={e => setServiceDesc(e.target.value)} placeholder="Consulta, bano, vacuna..." /></div>
-                <div><label className="label">Precio</label><input className="input" type="number" value={servicePrice} onChange={e => setServicePrice(e.target.value)} placeholder="0.00" /></div>
+                <div>
+                  <label className="label">Servicio</label>
+                  <select className="input" value={selectedServiceId} onChange={e => {
+                    const id = e.target.value
+                    setSelectedServiceId(id)
+                    if (!id) { setServiceDesc(''); setServicePrice(''); return }
+                    const svc = vetServices.find(s => s.id === id)
+                    if (!svc) return
+                    setServiceDesc(svc.name)
+                    setServicePrice(svc.price ? String(svc.price) : '')
+                  }}>
+                    <option value="">— Seleccionar servicio —</option>
+                    {vetServices.map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}{s.is_bath_service ? ' 🛁' : ''}{s.price ? ` — $${s.price}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div><label className="label">Descripción / Notas</label><input className="input" value={serviceDesc} onChange={e => setServiceDesc(e.target.value)} placeholder="Consulta, baño, vacuna..." /></div>
+                <div><label className="label">Precio</label><input className="input" type="text" inputMode="numeric" value={servicePrice} onChange={e => setServicePrice(e.target.value)} placeholder="0.00" /></div>
               </div>
             )}
             {visitType==='producto' && (
