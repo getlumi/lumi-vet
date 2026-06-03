@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
-export default function Dashboard({
-  const localToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Cancun' }).format(new Date())
- ({ clinic, session, onNavigate }) {
+const localToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Cancun' }).format(new Date())
+
+export default function Dashboard({ clinic, session, onNavigate }) {
   const [stats, setStats]     = useState({ appointments:0, patients:0, pendingAppts:0 })
   const [today, setToday]     = useState([])
   const [loading, setLoading] = useState(true)
