@@ -4,7 +4,9 @@ import jsPDF from 'jspdf'
 
 const HOURS = ['08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30','18:00']
 
-export default function Patients({ clinic, openNew }) {
+export default function Patients({
+  const localToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Cancun' }).format(new Date())
+ ({ clinic, openNew }) {
   const [tab, setTab]                       = useState('todos')
   const [lumiPatients, setLumiPatients]     = useState([])
   const [regularPatients, setRegularPatients] = useState([])
@@ -41,7 +43,7 @@ export default function Patients({ clinic, openNew }) {
   const [invSearch, setInvSearch]           = useState('')
 
   const [recordForm, setRecordForm]         = useState({ diagnosis:'', treatment:'', notes:'', weight:'', temperature:'', next_visit:'' })
-  const [apptForm, setApptForm]             = useState({ date: new Date().toISOString().slice(0,10), time:'09:00', notes:'', status:'confirmed', price:'', lumi_code:'' })
+  const [apptForm, setApptForm]             = useState({ date: localToday(), time:'09:00', notes:'', status:'confirmed', price:'', lumi_code:'' })
   const [newForm, setNewForm]               = useState({ owner_name:'', owner_phone:'', owner_email:'', pet_name:'', pet_type:'perro', breed:'', weight:'', gender:'macho', notes:'' })
 
   // Certificado de salud
@@ -133,13 +135,13 @@ export default function Patients({ clinic, openNew }) {
     if (selectedType === 'lumi') {
       const { data: record } = await supabase.from('vet_records').insert({
         clinic_id: clinic.id, pet_id: selected.pet_id,
-        date: new Date().toISOString().slice(0,10),
+        date: localToday(),
         vet_nombre: clinic.nombre_vet || null, vet_cedula: clinic.cedula || null,
         ...recordForm,
         weight: recordForm.weight ? parseFloat(recordForm.weight) : null,
         temperature: recordForm.temperature ? parseFloat(recordForm.temperature) : null,
       }).select().single()
-      await supabase.from('vet_patients').update({ last_visit: new Date().toISOString().slice(0,10) }).eq('id', selected.id)
+      await supabase.from('vet_patients').update({ last_visit: localToday() }).eq('id', selected.id)
       if (record && selected.pets?.lumi_id && selected.owner_id) {
         await supabase.rpc('grant_visit_points', { p_clinic_id: clinic.id, p_owner_id: selected.owner_id, p_pet_id: selected.pet_id, p_record_id: record.id })
         setPointsMsg(`+15 puntos otorgados a ${selected.profiles?.name || 'el dueño'} 🎉`)
@@ -149,12 +151,12 @@ export default function Patients({ clinic, openNew }) {
     } else {
       await supabase.from('vet_regular_records').insert({
         clinic_id: clinic.id, regular_patient_id: selected.id,
-        date: new Date().toISOString().slice(0,10),
+        date: localToday(),
         ...recordForm,
         weight: recordForm.weight ? parseFloat(recordForm.weight) : null,
         temperature: recordForm.temperature ? parseFloat(recordForm.temperature) : null,
       })
-      await supabase.from('vet_regular_patients').update({ last_visit: new Date().toISOString().slice(0,10) }).eq('id', selected.id)
+      await supabase.from('vet_regular_patients').update({ last_visit: localToday() }).eq('id', selected.id)
       await fetchRegularRecords(selected.id)
     }
     setShowRecord(false)
@@ -162,7 +164,7 @@ export default function Patients({ clinic, openNew }) {
   }
 
   const saveVisit = async () => {
-    const today = new Date().toISOString().slice(0,10)
+    const today = localToday()
     const patientId = selectedType === 'lumi' ? selected.pet_id : selected.id
     const ownerId   = selectedType === 'lumi' ? selected.owner_id : null
 
@@ -230,7 +232,7 @@ export default function Patients({ clinic, openNew }) {
       notes: apptForm.notes, status: apptForm.status, price: apptForm.price ? parseFloat(apptForm.price) : null,
     })
     setShowAppt(false)
-    setApptForm({ date: new Date().toISOString().slice(0,10), time:'09:00', notes:'', status:'confirmed', price:'' })
+    setApptForm({ date: localToday(), time:'09:00', notes:'', status:'confirmed', price:'' })
     setPointsMsg('Cita agendada correctamente')
     setTimeout(() => setPointsMsg(null), 3000)
   }
@@ -332,7 +334,7 @@ export default function Patients({ clinic, openNew }) {
     }
 
     // Generar PDF con QR
-    generateCertPDF(certConCodigo)
+    await generateCertPDF(certConCodigo)
 
     await fetchLumiRecords(selected.pet_id)
     setShowCert(false)
