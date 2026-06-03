@@ -19,23 +19,23 @@ const CATEGORY_COLORS = { servicio:'#7C3AED', producto:'#0EA5E9', consulta:'#16A
 
 function getDateRange(period, selectedYear) {
   const now = new Date()
-  const today = now.toISOString().slice(0,10)
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Cancun' }).format(now)
   if (period === 'day') return { from: today, to: today, label: 'Hoy' }
   if (period === 'week') {
     const day = now.getDay()
     const diff = now.getDate() - day + (day === 0 ? -6 : 1)
     const monday = new Date(new Date().setDate(diff))
-    return { from: monday.toISOString().slice(0,10), to: today, label: 'Esta semana' }
+    return { from: new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Cancun' }).format(monday), to: today, label: 'Esta semana' }
   }
   if (period === 'biweek') {
     const d = now.getDate()
     const from = d <= 15
-      ? new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10)
-      : new Date(now.getFullYear(), now.getMonth(), 16).toISOString().slice(0,10)
+      ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Cancun' }).format(new Date(now.getFullYear(), now.getMonth(), 1))
+      : new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Cancun' }).format(new Date(now.getFullYear(), now.getMonth(), 16))
     return { from, to: today, label: 'Quincenal' }
   }
   if (period === 'month') {
-    const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10)
+    const from = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Cancun' }).format(new Date(now.getFullYear(), now.getMonth(), 1))
     return { from, to: today, label: 'Este mes' }
   }
   if (period === 'year') {
@@ -45,7 +45,9 @@ function getDateRange(period, selectedYear) {
   return { from: today, to: today, label: 'Hoy' }
 }
 
-export default function AdminGlobal({ clinic }) {
+export default function AdminGlobal({
+  const localToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Cancun' }).format(new Date())
+ ({ clinic }) {
   const [period, setPeriod]             = useState('month')
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [transactions, setTransactions] = useState([])
@@ -53,7 +55,7 @@ export default function AdminGlobal({ clinic }) {
   const [loading, setLoading]           = useState(true)
   const [showAdd, setShowAdd]           = useState(false)
   const [saving, setSaving]             = useState(false)
-  const [form, setForm] = useState({ category:'servicio', description:'', amount:'', date: new Date().toISOString().slice(0,10) })
+  const [form, setForm] = useState({ category:'servicio', description:'', amount:'', date: localToday() })
 
   useEffect(() => { fetchAll() }, [period, selectedYear])
 
@@ -89,7 +91,7 @@ export default function AdminGlobal({ clinic }) {
       description: form.description, amount: parseFloat(form.amount), date: form.date,
     })
     setSaving(false); setShowAdd(false)
-    setForm({ category:'servicio', description:'', amount:'', date: new Date().toISOString().slice(0,10) })
+    setForm({ category:'servicio', description:'', amount:'', date: localToday() })
     fetchAll()
   }
 
