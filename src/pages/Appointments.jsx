@@ -7,12 +7,12 @@ const STATUS_LABELS = { pending:'Pendiente', confirmed:'Confirmada', completed:'
 
 export default function Appointments({ clinic, initialForm }) {
   const [appointments, setAppointments] = useState([])
-  const [services, setServices]         = useState([]) // servicios del inventario
+  const [services, setServices]         = useState([])
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0,10))
   const [showModal, setShowModal]       = useState(!!initialForm)
   const [loading, setLoading]           = useState(true)
   const [lumiLoading, setLumiLoading]   = useState(false)
-  const [lumiPet, setLumiPet]           = useState(null) // datos completos mascota Lumi
+  const [lumiPet, setLumiPet]           = useState(null)
 
   const emptyForm = {
     lumi_code:'', pet_id:null, pet_name:'', owner_name:'',
@@ -38,17 +38,18 @@ export default function Appointments({ clinic, initialForm }) {
     setLoading(false)
   }
 
+  // FIX: leer de vet_services, no de vet_inventory
   const fetchServices = async () => {
     const { data } = await supabase
-      .from('vet_inventory')
-      .select('*')
+      .from('vet_services')
+      .select('id, name, price, is_bath_service, is_active, price_small, price_medium, price_large, small_max_kg, medium_max_kg, large_max_kg, extra_1_name, extra_1_price, extra_2_name, extra_2_price, extra_3_name, extra_3_price')
       .eq('clinic_id', clinic.id)
-      .eq('category', 'servicio')
+      .eq('is_active', true)
       .order('name')
-    setServices(data || [])
+    // mapear price → sale_price para compatibilidad con el resto del código
+    setServices((data || []).map(s => ({ ...s, sale_price: s.price })))
   }
 
-  // Buscar por código Lumi — trae peso para calcular talla de baño
   const searchLumi = async (code) => {
     if (!code || code.length < 10) return
     setLumiLoading(true)
@@ -60,18 +61,14 @@ export default function Appointments({ clinic, initialForm }) {
     if (pet) {
       setLumiPet(pet)
       setForm(f => ({ ...f, pet_id: pet.id, pet_name: pet.name, owner_name: pet.profiles?.name || '' }))
-      // Si ya hay servicio de baño seleccionado, calcular talla automáticamente
       if (form.service_id) {
         const svc = services.find(s => s.id === form.service_id)
-        if (svc?.is_bath_service && pet.weight) {
-          autoSelectBathSize(svc, pet.weight)
-        }
+        if (svc?.is_bath_service && pet.weight) autoSelectBathSize(svc, pet.weight)
       }
     }
     setLumiLoading(false)
   }
 
-  // Seleccionar servicio
   const handleServiceChange = (serviceId) => {
     if (!serviceId) {
       setForm(f => ({ ...f, service_id:null, service_name:'', bath_size:null, bath_extras:[], price:'' }))
@@ -79,8 +76,7 @@ export default function Appointments({ clinic, initialForm }) {
     }
     const svc = services.find(s => s.id === serviceId)
     if (!svc) return
-    const newForm = { ...form, service_id: svc.id, service_name: svc.name, bath_size:null, bath_extras:[], price: svc.sale_price ? String(svc.sale_price) : '' }
-    // Si es baño y hay mascota Lumi con peso, calcular talla
+    const newForm = { ...form, service_id: svc.id, service_name: svc.name, bath_size:null, bath_extras:[], price: svc.price ? String(svc.price) : '' }
     if (svc.is_bath_service && lumiPet?.weight) {
       const size = calcBathSize(svc, lumiPet.weight)
       newForm.bath_size = size
@@ -177,9 +173,9 @@ export default function Appointments({ clinic, initialForm }) {
   }
 
   const BATH_LABELS = {
-    small:  { label:'Chico', icon:'🐕', desc: selectedService ? `hasta ${selectedService.small_max_kg} kg` : '' },
+    small:  { label:'Chico',   icon:'🐕', desc: selectedService ? `hasta ${selectedService.small_max_kg} kg`  : '' },
     medium: { label:'Mediano', icon:'🐕', desc: selectedService ? `hasta ${selectedService.medium_max_kg} kg` : '' },
-    large:  { label:'Grande', icon:'🐕', desc: selectedService ? `hasta ${selectedService.large_max_kg} kg` : '' },
+    large:  { label:'Grande',  icon:'🐕', desc: selectedService ? `hasta ${selectedService.large_max_kg} kg`  : '' },
   }
 
   const canSave = form.pet_name.trim() && form.owner_name.trim()
@@ -313,19 +309,25 @@ export default function Appointments({ clinic, initialForm }) {
               {/* Servicio */}
               <div>
                 <label className="label">Servicio</label>
-                <select className="input" value={form.service_id || ''} onChange={e => handleServiceChange(e.target.value || null)}>
-                  <option value="">— Seleccionar servicio (opcional) —</option>
-                  {services.map(s => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}{s.is_bath_service ? ' 🛁' : ''}{s.sale_price ? ` — $${s.sale_price}` : ''}
-                    </option>
-                  ))}
-                </select>
+                {services.length === 0 ? (
+                  <p style={{ fontSize:12, color:'var(--text-muted)', margin:'4px 0 0' }}>
+                    No hay servicios activos. Agrégalos en la sección Servicios.
+                  </p>
+                ) : (
+                  <select className="input" value={form.service_id || ''} onChange={e => handleServiceChange(e.target.value || null)}>
+                    <option value="">— Seleccionar servicio (opcional) —</option>
+                    {services.map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}{s.is_bath_service ? ' 🛁' : ''}{s.price ? ` — $${s.price}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               {/* Panel de baño */}
               {isBath && (
-                <div style={{ background:'var(--purple-lighter)', borderRadius:14, padding:14, display:'flex', flexDirection:'column', gap:12 }}>
+                <div style={{ background:'var(--purple-lighter, #F5F3FF)', borderRadius:14, padding:14, display:'flex', flexDirection:'column', gap:12 }}>
                   <p style={{ fontSize:12, fontWeight:700, color:'var(--purple)', textTransform:'uppercase', letterSpacing:'0.5px', margin:0 }}>🛁 Configuración del baño</p>
 
                   {lumiPet?.weight && (
@@ -335,7 +337,6 @@ export default function Appointments({ clinic, initialForm }) {
                     </p>
                   )}
 
-                  {/* Selector de talla */}
                   <div>
                     <label className="label">Talla</label>
                     <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
@@ -356,7 +357,6 @@ export default function Appointments({ clinic, initialForm }) {
                     </div>
                   </div>
 
-                  {/* Extras */}
                   {bathExtrasAvailable.length > 0 && (
                     <div>
                       <label className="label">Extras</label>
@@ -386,7 +386,7 @@ export default function Appointments({ clinic, initialForm }) {
                 <input className="input" value={form.notes} onChange={e => setForm(f=>({...f,notes:e.target.value}))} placeholder="Consulta general, vacunación..." />
               </div>
 
-              {/* Estado */}
+              {/* Estado y precio */}
               <div className="grid-2">
                 <div>
                   <label className="label">Estado</label>
