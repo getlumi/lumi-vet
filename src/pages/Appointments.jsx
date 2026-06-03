@@ -16,14 +16,14 @@ export default function Appointments({
   const [lumiLoading, setLumiLoading]   = useState(false)
   const [lumiPet, setLumiPet]           = useState(null)
 
-  const emptyForm = {
+  const emptyForm = () => ({
     lumi_code:'', pet_id:null, pet_name:'', owner_name:'',
     date: localToday(),
     time:'09:00', notes:'', status:'confirmed', price:'',
     service_id: null, service_name:'',
     bath_size: null, bath_extras: [],
-  }
-  const [form, setForm] = useState(initialForm || emptyForm)
+  })
+  const [form, setForm] = useState(initialForm || emptyForm())
 
   useEffect(() => { fetchAppointments() }, [selectedDate])
   useEffect(() => { fetchServices() }, [])
@@ -149,7 +149,7 @@ export default function Appointments({
     if (!error) {
       if (form.date === selectedDate) fetchAppointments()
       setShowModal(false)
-      setForm(emptyForm)
+      setForm(emptyForm())
       setLumiPet(null)
     }
   }
@@ -187,7 +187,7 @@ export default function Appointments({
           <p style={{ fontSize:11, fontWeight:700, color:'var(--text-muted)', letterSpacing:'1.5px', textTransform:'uppercase', margin:'0 0 4px' }}>Gestión</p>
           <p style={{ fontSize:24, fontWeight:700, color:'var(--purple-dark)', margin:0, letterSpacing:'-0.3px' }}>Agenda</p>
         </div>
-        <button className="btn btn-primary" onClick={() => { setForm(emptyForm); setLumiPet(null); setShowModal(true) }}>
+        <button className="btn btn-primary" onClick={() => { setForm(emptyForm()); setLumiPet(null); setShowModal(true) }}>
           <i className="ti ti-plus" /> Nueva cita
         </button>
       </div>
@@ -209,7 +209,7 @@ export default function Appointments({
           <div style={{ textAlign:'center', padding:'40px 20px' }}>
             <i className="ti ti-calendar" style={{ fontSize:40, color:'var(--text-muted)', display:'block', marginBottom:12 }} />
             <p style={{ fontSize:15, fontWeight:700, margin:'0 0 6px' }}>Sin citas para este día</p>
-            <button className="btn btn-primary" onClick={() => { setForm({...emptyForm, date:selectedDate}); setShowModal(true) }}>+ Nueva cita</button>
+            <button className="btn btn-primary" onClick={() => { setForm({...emptyForm(), date:selectedDate}); setShowModal(true) }}>+ Nueva cita</button>
           </div>
         ) : (
           <table className="table">
