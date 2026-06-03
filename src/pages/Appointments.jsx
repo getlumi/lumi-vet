@@ -5,10 +5,12 @@ const HOURS = ['07:00','07:30','08:00','08:30','09:00','09:30','10:00','10:30','
 const STATUS_COLORS = { pending:'badge-amber', confirmed:'badge-green', completed:'badge-purple', cancelled:'badge-red' }
 const STATUS_LABELS = { pending:'Pendiente', confirmed:'Confirmada', completed:'Completada', cancelled:'Cancelada' }
 
-export default function Appointments({ clinic, initialForm }) {
+export default function Appointments({
+  const localToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Cancun' }).format(new Date())
+ ({ clinic, initialForm }) {
   const [appointments, setAppointments] = useState([])
   const [services, setServices]         = useState([])
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0,10))
+  const [selectedDate, setSelectedDate] = useState(localToday())
   const [showModal, setShowModal]       = useState(!!initialForm)
   const [loading, setLoading]           = useState(true)
   const [lumiLoading, setLumiLoading]   = useState(false)
@@ -16,7 +18,7 @@ export default function Appointments({ clinic, initialForm }) {
 
   const emptyForm = {
     lumi_code:'', pet_id:null, pet_name:'', owner_name:'',
-    date: new Date().toISOString().slice(0,10),
+    date: localToday(),
     time:'09:00', notes:'', status:'confirmed', price:'',
     service_id: null, service_name:'',
     bath_size: null, bath_extras: [],
@@ -167,7 +169,7 @@ export default function Appointments({ clinic, initialForm }) {
   const changeDay = (days) => {
     const d = new Date(selectedDate + 'T12:00:00')
     d.setDate(d.getDate() + days)
-    setSelectedDate(d.toISOString().slice(0,10))
+    setSelectedDate(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Cancun' }).format(d))
   }
 
   const BATH_LABELS = {
@@ -195,7 +197,7 @@ export default function Appointments({ clinic, initialForm }) {
         <button className="btn btn-secondary btn-icon" onClick={() => changeDay(-1)}><i className="ti ti-chevron-left" /></button>
         <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="input" style={{ width:'auto' }} />
         <button className="btn btn-secondary btn-icon" onClick={() => changeDay(1)}><i className="ti ti-chevron-right" /></button>
-        <button className="btn btn-secondary btn-sm" onClick={() => setSelectedDate(new Date().toISOString().slice(0,10))}>Hoy</button>
+        <button className="btn btn-secondary btn-sm" onClick={() => setSelectedDate(localToday())}>Hoy</button>
         <span className="badge badge-purple" style={{ marginLeft:'auto' }}>{appointments.length} citas</span>
       </div>
 
