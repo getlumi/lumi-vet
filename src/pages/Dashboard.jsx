@@ -38,7 +38,6 @@ export default function Dashboard({ clinic, session, onNavigate }) {
       })
       setToday(todayRes.data || [])
 
-      // Cargar inventario (solo productos) para venta rápida
       const { data: inv } = await supabase
         .from('vet_inventory')
         .select('id,name,unit,sale_price,stock,category')
@@ -47,7 +46,6 @@ export default function Dashboard({ clinic, session, onNavigate }) {
         .order('name')
       setQuickInventory(inv || [])
 
-      // Cargar servicios para venta rápida
       const { data: svcs } = await supabase
         .from('vet_services')
         .select('id,name,price,category,is_bath_service,price_small,price_medium,price_large')
@@ -56,7 +54,6 @@ export default function Dashboard({ clinic, session, onNavigate }) {
         .order('name')
       setQuickServices(svcs || [])
 
-      // Ranking de la clínica
       const { data: reviews } = await supabase
         .from('vet_reviews').select('rating').eq('clinic_id', clinic.id)
       if (reviews && reviews.length > 0) {
@@ -97,7 +94,6 @@ export default function Dashboard({ clinic, session, onNavigate }) {
           amount:      (item.sale_price || 0) * item.qty,
           date:        today,
         })
-        // Descontar stock solo si es producto
         if (item._type !== 'servicio' && item.stock > 0) {
           await supabase.from('vet_inventory')
             .update({ stock: Math.max(0, item.stock - item.qty) })
@@ -146,10 +142,26 @@ export default function Dashboard({ clinic, session, onNavigate }) {
 
   return (
     <div>
-      <div style={{ marginBottom:28, paddingTop:4, paddingBottom:20, borderBottom:'1px solid var(--border)' }}>
-        <p style={{ fontSize:12, fontWeight:500, color:'var(--text-muted)', letterSpacing:'0.3px', margin:'0 0 6px', textTransform:'capitalize' }}>{todayStr}</p>
-        <p style={{ fontSize:24, fontWeight:700, color:'var(--purple-dark)', margin:0, letterSpacing:'-0.3px', lineHeight:1.3 }}>
-          Buenos días 👋
+      {/* Header elegante con logo de fondo */}
+      <div style={{ marginBottom:28, paddingTop:8, paddingBottom:20, paddingLeft:8, borderBottom:'1px solid var(--border)', position:'relative', overflow:'hidden', minHeight:76 }}>
+        {clinic.logo_url && (
+          <img
+            src={clinic.logo_url}
+            alt=""
+            aria-hidden="true"
+            style={{
+              position:'absolute', right:0, top:'50%', transform:'translateY(-50%)',
+              height:90, width:'auto', objectFit:'contain',
+              opacity:0.4, pointerEvents:'none', userSelect:'none',
+              filter:'grayscale(15%)',
+            }}
+          />
+        )}
+        <p style={{ fontSize:12, fontWeight:500, color:'var(--text-muted)', letterSpacing:'0.3px', margin:'0 0 6px', textTransform:'capitalize', position:'relative' }}>
+          {todayStr}
+        </p>
+        <p style={{ fontSize:24, fontWeight:700, color:'var(--purple-dark)', margin:0, letterSpacing:'-0.3px', lineHeight:1.3, position:'relative' }}>
+          Buenos días 🐾
         </p>
       </div>
 
@@ -172,7 +184,6 @@ export default function Dashboard({ clinic, session, onNavigate }) {
         ))}
       </div>
 
-      {/* Ranking */}
       {ranking.count > 0 && (
         <div style={{ background:'linear-gradient(135deg,#F59E0B,#D97706)', borderRadius:14, padding:'14px 18px', marginBottom:20, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
           <div>
@@ -301,14 +312,12 @@ export default function Dashboard({ clinic, session, onNavigate }) {
         <div onClick={e => e.target === e.currentTarget && setShowQuickSale(false)}
           style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
           <div style={{ background:'white', borderRadius:20, width:'100%', maxWidth:480, maxHeight:'85vh', overflow:'auto', padding:20 }}>
-
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
               <p style={{ fontSize:17, fontWeight:800, margin:0 }}>🛒 Venta rápida</p>
               <button onClick={() => setShowQuickSale(false)} style={{ background:'var(--purple-light)', border:'none', borderRadius:'50%', width:32, height:32, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
                 <i className="ti ti-x" style={{ color:'var(--purple)', fontSize:16 }} />
               </button>
             </div>
-
             {quickSuccess ? (
               <div style={{ textAlign:'center', padding:'32px 0' }}>
                 <div style={{ fontSize:48, marginBottom:12 }}>✅</div>
@@ -317,7 +326,6 @@ export default function Dashboard({ clinic, session, onNavigate }) {
               </div>
             ) : (
               <>
-                {/* Datos cliente (opcional) */}
                 <div style={{ background:'var(--bg)', borderRadius:12, padding:12, marginBottom:14 }}>
                   <p style={{ fontSize:11, fontWeight:700, color:'var(--text-secondary)', textTransform:'uppercase', letterSpacing:'0.5px', margin:'0 0 8px' }}>Cliente (opcional)</p>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
@@ -325,13 +333,8 @@ export default function Dashboard({ clinic, session, onNavigate }) {
                     <input className="input" value={quickClient.phone} onChange={e => setQuickClient(c => ({...c, phone: e.target.value}))} placeholder="Teléfono..." style={{ fontSize:13 }} type="tel" />
                   </div>
                 </div>
-
-                {/* Buscador de productos/servicios */}
                 <input className="input" value={quickSearch} onChange={e => setQuickSearch(e.target.value)}
                   placeholder="🔍 Buscar producto o servicio..." style={{ marginBottom:10 }} />
-
-                {/* Lista de inventario */}
-                {/* Tabs productos / servicios */}
                 <div style={{ display:'flex', gap:6, marginBottom:10 }}>
                   {['productos','servicios'].map(t => (
                     <button key={t} onClick={() => { setQuickTab(t); setQuickSearch('') }}
@@ -341,7 +344,6 @@ export default function Dashboard({ clinic, session, onNavigate }) {
                     </button>
                   ))}
                 </div>
-
                 <div style={{ maxHeight:200, overflowY:'auto', display:'flex', flexDirection:'column', gap:6, marginBottom:14 }}>
                   {quickTab === 'productos' ? (
                     quickInventory
@@ -371,8 +373,6 @@ export default function Dashboard({ clinic, session, onNavigate }) {
                       ))
                   )}
                 </div>
-
-                {/* Carrito */}
                 {quickCart.length > 0 && (
                   <div style={{ border:'1px solid var(--border)', borderRadius:12, padding:12, marginBottom:14 }}>
                     <p style={{ fontSize:13, fontWeight:700, margin:'0 0 10px' }}>🛒 Carrito</p>
@@ -393,7 +393,6 @@ export default function Dashboard({ clinic, session, onNavigate }) {
                     </div>
                   </div>
                 )}
-
                 <div style={{ display:'flex', gap:10 }}>
                   <button onClick={() => setShowQuickSale(false)} className="btn btn-secondary" style={{ flex:1, justifyContent:'center' }}>Cancelar</button>
                   <button onClick={saveQuickSale} disabled={quickCart.length === 0 || quickSaving}
