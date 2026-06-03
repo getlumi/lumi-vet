@@ -45,9 +45,9 @@ function getDateRange(period, selectedYear) {
   return { from: today, to: today, label: 'Hoy' }
 }
 
-export default function AdminGlobal({
-  const localToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Cancun' }).format(new Date())
- ({ clinic }) {
+const localToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Cancun' }).format(new Date())
+
+export default function AdminGlobal({ clinic }) {
   const [period, setPeriod]             = useState('month')
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [transactions, setTransactions] = useState([])
