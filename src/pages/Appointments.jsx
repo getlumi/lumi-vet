@@ -327,6 +327,12 @@ export default function Appointments({ clinic, initialForm }) {
               {isBath && (
                 <div style={{ background:'var(--purple-lighter, #F5F3FF)', borderRadius:14, padding:14, display:'flex', flexDirection:'column', gap:12 }}>
                   <p style={{ fontSize:12, fontWeight:700, color:'var(--purple)', textTransform:'uppercase', letterSpacing:'0.5px', margin:0 }}>🛁 Configuración del baño</p>
+                  {form.bath_size && (
+                    <div style={{ background:'var(--purple)', borderRadius:10, padding:'8px 14px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                      <span style={{ fontSize:13, color:'rgba(255,255,255,0.8)', fontWeight:600 }}>Total estimado</span>
+                      <span style={{ fontSize:18, fontWeight:900, color:'white' }}>${form.price || '0'}</span>
+                    </div>
+                  )}
 
                   {lumiPet?.weight && (
                     <p style={{ fontSize:12, color:'var(--text-secondary)', margin:0 }}>
@@ -395,7 +401,7 @@ export default function Appointments({ clinic, initialForm }) {
                 </div>
                 <div>
                   <label className="label">Precio total</label>
-                  <input className="input" type="number" value={form.price} onChange={e => setForm(f=>({...f,price:e.target.value}))} placeholder="0.00" style={{ fontWeight:700, color:'var(--purple)' }} />
+                  <input className="input" type="text" inputMode="numeric" key={form.bath_size || 'no-bath'} value={form.price} onChange={e => setForm(f=>({...f,price:e.target.value}))} placeholder="0.00" style={{ fontWeight:700, color:'var(--purple)' }} />
                 </div>
               </div>
 
