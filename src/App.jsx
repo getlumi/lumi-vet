@@ -10,7 +10,6 @@ import Services from './pages/Services'
 import ChatVet from './pages/ChatVet'
 import Settings from './pages/Settings'
 import OnboardingVet from './pages/OnboardingVet'
-import Admin from './pages/Admin'
 
 const NAV = [
   { id: 'dashboard',    icon: 'ti-layout-dashboard', label: 'Dashboard',    plans: ['basic','pro','plus'] },
@@ -18,7 +17,6 @@ const NAV = [
   { id: 'patients',     icon: 'ti-paw',               label: 'Pacientes',    plans: ['pro','plus'] },
   { id: 'services',     icon: 'ti-stethoscope',       label: 'Servicios',    plans: ['pro','plus'] },
   { id: 'inventory',    icon: 'ti-package',            label: 'Inventario',   plans: ['pro','plus'] },
-  { id: 'clinic-admin', icon: 'ti-chart-dots',         label: 'Admin Global', plans: ['basic','pro','plus'] },
   { id: 'chat',         icon: 'ti-message-circle',     label: 'Mensajes',     plans: ['pro','plus'] },
   { id: 'settings',     icon: 'ti-settings',           label: 'Ajustes',      plans: ['basic','pro','plus'] },
 ]
@@ -90,10 +88,9 @@ export default function App() {
         )
       case 'services':     return <Services     clinic={clinic} session={session} />
       case 'inventory':    return <Inventory    clinic={clinic} session={session} />
-      case 'clinic-admin': return <AdminGlobal  clinic={clinic} session={session} />
       case 'chat':         return <ChatVet      clinic={clinic} session={session} />
       case 'settings':     return <Settings     clinic={clinic} session={session} onUpdate={setClinic} />
-      case 'admin':        return <Admin        clinic={clinic} session={session} />
+      case 'admin':        return <AdminGlobal  clinic={clinic} session={session} />
       default:             return <Dashboard    clinic={clinic} session={session} onNavigate={navigate} />
     }
   }
@@ -138,7 +135,7 @@ export default function App() {
           ))}
         </nav>
 
-        {/* Botón Admin Global Lumi — solo si is_admin = true */}
+        {/* Admin Global — visible si is_admin = true */}
         {Boolean(clinic?.is_admin) && (
           <div style={{ padding:'0 8px 8px' }}>
             <button
@@ -153,12 +150,6 @@ export default function App() {
         )}
 
         <div style={{ padding:'12px 8px', borderTop:'1px solid var(--border)' }}>
-          <a href="https://lumi-app-indol.vercel.app" target="_blank" style={{ textDecoration:'none' }}>
-            <button className="nav-item" style={{ color:'var(--purple)', fontWeight:700 }}>
-              <i className="ti ti-arrow-left" />
-              Ir a Lumi App
-            </button>
-          </a>
           <button className="nav-item" onClick={() => supabase.auth.signOut()} style={{ color:'var(--red)' }}>
             <i className="ti ti-logout" />
             Cerrar sesión
