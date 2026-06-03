@@ -103,16 +103,14 @@ export default function Appointments({ clinic, initialForm }) {
     setForm(f => ({ ...f, bath_size: size, price: String(price || '') }))
   }
 
-  const handleBathSize = (size) => {
-    const svc = services.find(s => s.id === form.service_id)
+  const handleBathSize = (size, svc) => {
     const price = svc ? getBathPrice(svc, size) : 0
     const extrasTotal = form.bath_extras.reduce((sum, e) => sum + (e.price || 0), 0)
     setForm(f => ({ ...f, bath_size: size, price: String((price || 0) + extrasTotal) }))
   }
 
-  const toggleExtra = (extra) => {
-    const svc = services.find(s => s.id === form.service_id)
-    const basePrice = svc ? (getBathPrice(svc, form.bath_size) || 0) : 0
+  const toggleExtra = (extra, svc, currentBathSize) => {
+    const basePrice = svc ? (getBathPrice(svc, currentBathSize) || 0) : 0
     const exists = form.bath_extras.find(e => e.name === extra.name)
     const newExtras = exists
       ? form.bath_extras.filter(e => e.name !== extra.name)
@@ -345,7 +343,7 @@ export default function Appointments({ clinic, initialForm }) {
                         const price = selectedService ? getBathPrice(selectedService, size) : null
                         const isSelected = form.bath_size === size
                         return (
-                          <button key={size} onClick={() => handleBathSize(size)}
+                          <button key={size} onClick={() => handleBathSize(size, selectedService)}
                             style={{ padding:'10px 8px', borderRadius:10, border:`2px solid ${isSelected?'var(--purple)':'var(--border)'}`, background: isSelected?'var(--purple-light)':'white', cursor:'pointer', textAlign:'center', transition:'all 0.15s' }}>
                             <p style={{ fontSize:18, margin:'0 0 2px' }}>{info.icon}</p>
                             <p style={{ fontSize:12, fontWeight:700, color: isSelected?'var(--purple)':'var(--text-primary)', margin:'0 0 2px' }}>{info.label}</p>
@@ -364,7 +362,7 @@ export default function Appointments({ clinic, initialForm }) {
                         {bathExtrasAvailable.map(extra => {
                           const selected = form.bath_extras.find(e => e.name === extra.name)
                           return (
-                            <label key={extra.name} onClick={() => toggleExtra(extra)}
+                            <label key={extra.name} onClick={() => toggleExtra(extra, selectedService, form.bath_size)}
                               style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 12px', background: selected?'var(--purple-light)':'white', borderRadius:8, border:`1px solid ${selected?'var(--purple)':'var(--border)'}`, cursor:'pointer', transition:'all 0.15s' }}>
                               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                                 <input type="checkbox" checked={!!selected} readOnly style={{ accentColor:'var(--purple)' }} />
