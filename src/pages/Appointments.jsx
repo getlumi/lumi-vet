@@ -192,7 +192,9 @@ export default function Appointments({ clinic, initialForm }) {
       {/* Navegación de fecha */}
       <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
         <button className="btn btn-secondary btn-icon" onClick={() => changeDay(-1)}><i className="ti ti-chevron-left" /></button>
-        <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="input" style={{ width:'auto' }} />
+        <span style={{ fontSize:14, fontWeight:700, color:'var(--purple-dark)', padding:'8px 14px', background:'white', border:'1px solid var(--border)', borderRadius:8, minWidth:200, textAlign:'center' }}>
+          {new Date(selectedDate + 'T12:00:00').toLocaleDateString('es-MX', { weekday:'short', day:'numeric', month:'long', year:'numeric' })}
+        </span>
         <button className="btn btn-secondary btn-icon" onClick={() => changeDay(1)}><i className="ti ti-chevron-right" /></button>
         <button className="btn btn-secondary btn-sm" onClick={() => setSelectedDate(localToday())}>Hoy</button>
         <span className="badge badge-purple" style={{ marginLeft:'auto' }}>{appointments.length} citas</span>
