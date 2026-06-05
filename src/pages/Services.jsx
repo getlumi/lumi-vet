@@ -1,7 +1,19 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
-const CATS = ['consulta','cirugía','vacuna','grooming','baño','laboratorio','otro']
+const CATS = ['consulta','cirugía','vacuna','grooming','baño','laboratorio','lumi_carnet','lumi_cert','otro']
+
+const CAT_LABELS = {
+  'consulta':    'Consulta',
+  'cirugía':     'Cirugía',
+  'vacuna':      'Vacuna',
+  'grooming':    'Grooming',
+  'baño':        'Baño',
+  'laboratorio': 'Laboratorio',
+  'lumi_carnet': '📋 Carnet Lumi',
+  'lumi_cert':   '📄 Certificado Lumi',
+  'otro':        'Otro',
+}
 
 export default function Services({ clinic }) {
   const [services, setServices] = useState([])
@@ -12,6 +24,8 @@ export default function Services({ clinic }) {
   const emptyForm = {
     name:'', description:'', price:'', duration:'30', category:'consulta',
     is_bath_service: false,
+    is_lumi_carnet: false,
+    is_lumi_cert: false,
     price_small:'', price_medium:'', price_large:'',
     small_max_kg:'10', medium_max_kg:'20', large_max_kg:'40',
     extra_1_name:'', extra_1_price:'',
@@ -37,6 +51,8 @@ export default function Services({ clinic }) {
       duration:       String(s.duration ?? '30'),
       category:       s.category    || 'consulta',
       is_bath_service: s.is_bath_service || false,
+      is_lumi_carnet: s.category === 'lumi_carnet',
+      is_lumi_cert:   s.category === 'lumi_cert',
       price_small:    String(s.price_small  ?? ''),
       price_medium:   String(s.price_medium ?? ''),
       price_large:    String(s.price_large  ?? ''),
@@ -51,6 +67,26 @@ export default function Services({ clinic }) {
       extra_3_price:  String(s.extra_3_price ?? ''),
     })
     setShowModal(true)
+  }
+
+  // Al cambiar categoría, auto-marcar toggles especiales
+  const handleCategoryChange = (cat) => {
+    setForm(f => ({
+      ...f,
+      category: cat,
+      is_lumi_carnet: cat === 'lumi_carnet',
+      is_lumi_cert:   cat === 'lumi_cert',
+      is_bath_service: cat === 'baño' ? f.is_bath_service : false,
+      // Nombre sugerido si está vacío
+      name: f.name.trim() ? f.name : (
+        cat === 'lumi_carnet' ? 'Actualizar carnet Lumi' :
+        cat === 'lumi_cert'   ? 'Certificado de salud Lumi' : f.name
+      ),
+      description: f.description.trim() ? f.description : (
+        cat === 'lumi_carnet' ? 'Registro de vacuna en carnet digital Lumi' :
+        cat === 'lumi_cert'   ? 'Certificado de salud oficial para viajes' : f.description
+      ),
+    }))
   }
 
   const saveService = async () => {
@@ -98,7 +134,17 @@ export default function Services({ clinic }) {
     fetchServices()
   }
 
-  const isBathForm = form.is_bath_service
+  const isBathForm     = form.is_bath_service
+  const isLumiCarnet   = form.category === 'lumi_carnet'
+  const isLumiCert     = form.category === 'lumi_cert'
+  const isSpecialLumi  = isLumiCarnet || isLumiCert
+
+  // Agrupar por categoría para la tabla
+  const grouped = CATS.reduce((acc, cat) => {
+    const items = services.filter(s => s.category === cat)
+    if (items.length > 0) acc[cat] = items
+    return acc
+  }, {})
 
   return (
     <div>
@@ -108,6 +154,34 @@ export default function Services({ clinic }) {
           <p style={{ fontSize:24, fontWeight:700, color:'var(--purple-dark)', margin:0, letterSpacing:'-0.3px' }}>Servicios</p>
         </div>
         <button className="btn btn-primary" onClick={openAdd}><i className="ti ti-plus" /> Agregar servicio</button>
+      </div>
+
+      {/* Accesos rápidos Lumi */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:20 }}>
+        {[
+          { cat:'lumi_carnet', icon:'ti-certificate', label:'Actualizar carnet Lumi', desc:'Registro de vacunas en el carnet digital', color:'#EDE9FE', iconColor:'#6B21A8', border:'#C4B5FD' },
+          { cat:'lumi_cert',   icon:'ti-file-certificate', label:'Certificado de salud Lumi', desc:'Certificado oficial para viajes', color:'#E0F2FE', iconColor:'#0369A1', border:'#BAE6FD' },
+        ].map(item => {
+          const exists = services.find(s => s.category === item.cat)
+          return (
+            <div key={item.cat} style={{ background:item.color, border:`1.5px solid ${item.border}`, borderRadius:14, padding:'14px 16px', display:'flex', alignItems:'center', gap:12 }}>
+              <div style={{ width:40, height:40, borderRadius:10, background:'white', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <i className={`ti ${item.icon}`} style={{ fontSize:20, color:item.iconColor }} />
+              </div>
+              <div style={{ flex:1 }}>
+                <p style={{ fontSize:13, fontWeight:800, color:item.iconColor, margin:'0 0 2px' }}>{item.label}</p>
+                <p style={{ fontSize:11, color:item.iconColor, opacity:0.7, margin:0 }}>{item.desc}</p>
+              </div>
+              {exists
+                ? <span style={{ fontSize:10, fontWeight:700, background:'#DCFCE7', color:'#16A34A', borderRadius:10, padding:'3px 8px', flexShrink:0 }}>✓ Activo</span>
+                : <button onClick={() => { setEditItem(null); setForm({...emptyForm, category:item.cat}); handleCategoryChange(item.cat); setShowModal(true) }}
+                    style={{ fontSize:11, fontWeight:700, background:'white', border:`1px solid ${item.border}`, color:item.iconColor, borderRadius:8, padding:'4px 10px', cursor:'pointer', flexShrink:0 }}>
+                    + Agregar
+                  </button>
+              }
+            </div>
+          )
+        })}
       </div>
 
       <div className="card">
@@ -134,7 +208,10 @@ export default function Services({ clinic }) {
                     </p>
                   </td>
                   <td>
-                    <span className="badge badge-purple" style={{ textTransform:'capitalize' }}>{s.category}</span>
+                    <span className={`badge ${s.category==='lumi_carnet'?'badge-purple':s.category==='lumi_cert'?'badge-blue':'badge-purple'}`}
+                      style={{ textTransform:'capitalize' }}>
+                      {CAT_LABELS[s.category] || s.category}
+                    </span>
                     {s.is_bath_service && <span className="badge badge-amber" style={{ marginLeft:4 }}>Baño</span>}
                   </td>
                   <td style={{ color:'var(--text-secondary)' }}>{s.duration} min</td>
@@ -162,19 +239,11 @@ export default function Services({ clinic }) {
             <p style={{ fontSize:17, fontWeight:800, margin:'0 0 20px' }}>{editItem ? 'Editar' : 'Nuevo'} servicio</p>
             <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
 
-              <div>
-                <label className="label">Nombre *</label>
-                <input className="input" value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} placeholder="Baño completo, Consulta general..." />
-              </div>
-              <div>
-                <label className="label">Descripción</label>
-                <input className="input" value={form.description} onChange={e => setForm(f=>({...f,description:e.target.value}))} placeholder="Incluye..." />
-              </div>
               <div className="grid-2">
                 <div>
                   <label className="label">Categoría</label>
-                  <select className="input" value={form.category} onChange={e => setForm(f=>({...f,category:e.target.value}))}>
-                    {CATS.map(c => <option key={c} value={c} style={{ textTransform:'capitalize' }}>{c}</option>)}
+                  <select className="input" value={form.category} onChange={e => handleCategoryChange(e.target.value)}>
+                    {CATS.map(c => <option key={c} value={c}>{CAT_LABELS[c] || c}</option>)}
                   </select>
                 </div>
                 <div>
@@ -183,20 +252,48 @@ export default function Services({ clinic }) {
                 </div>
               </div>
 
-              {/* Toggle baño */}
-              <div style={{ background:'var(--purple-lighter)', borderRadius:12, padding:14 }}>
-                <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer' }}>
-                  <input type="checkbox" checked={form.is_bath_service}
-                    onChange={e => setForm(f=>({...f,is_bath_service:e.target.checked}))}
-                    style={{ width:18, height:18, accentColor:'var(--purple)' }} />
+              {/* Banner especial Lumi */}
+              {isSpecialLumi && (
+                <div style={{ background: isLumiCarnet ? '#EDE9FE' : '#E0F2FE', border:`1px solid ${isLumiCarnet?'#C4B5FD':'#BAE6FD'}`, borderRadius:12, padding:'12px 14px', display:'flex', alignItems:'center', gap:10 }}>
+                  <i className={`ti ${isLumiCarnet?'ti-certificate':'ti-file-certificate'}`} style={{ fontSize:20, color:isLumiCarnet?'#6B21A8':'#0369A1' }} />
                   <div>
-                    <p style={{ fontSize:13, fontWeight:700, color:'var(--purple)', margin:0 }}>🛁 Este es un servicio de baño</p>
-                    <p style={{ fontSize:11, color:'var(--text-secondary)', margin:0 }}>Activa precios por talla y extras personalizables</p>
+                    <p style={{ fontSize:13, fontWeight:700, color:isLumiCarnet?'#6B21A8':'#0369A1', margin:'0 0 2px' }}>
+                      {isLumiCarnet ? 'Servicio de carnet Lumi' : 'Servicio de certificado Lumi'}
+                    </p>
+                    <p style={{ fontSize:11, color:isLumiCarnet?'#6B21A8':'#0369A1', opacity:0.8, margin:0 }}>
+                      {isLumiCarnet
+                        ? 'Aparecerá en el selector de servicios al registrar visitas y citas'
+                        : 'Aparecerá en el selector de servicios. El certificado PDF se genera desde Pacientes'}
+                    </p>
                   </div>
-                </label>
+                </div>
+              )}
+
+              <div>
+                <label className="label">Nombre *</label>
+                <input className="input" value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} placeholder="Actualizar carnet Lumi, Consulta general..." />
+              </div>
+              <div>
+                <label className="label">Descripción</label>
+                <input className="input" value={form.description} onChange={e => setForm(f=>({...f,description:e.target.value}))} placeholder="Incluye..." />
               </div>
 
-              {/* Precio simple (no baño) */}
+              {/* Toggle baño — solo si no es Lumi especial */}
+              {!isSpecialLumi && (
+                <div style={{ background:'var(--purple-lighter, #F5F3FF)', borderRadius:12, padding:14 }}>
+                  <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer' }}>
+                    <input type="checkbox" checked={form.is_bath_service}
+                      onChange={e => setForm(f=>({...f,is_bath_service:e.target.checked}))}
+                      style={{ width:18, height:18, accentColor:'var(--purple)' }} />
+                    <div>
+                      <p style={{ fontSize:13, fontWeight:700, color:'var(--purple)', margin:0 }}>🛁 Este es un servicio de baño</p>
+                      <p style={{ fontSize:11, color:'var(--text-secondary)', margin:0 }}>Activa precios por talla y extras personalizables</p>
+                    </div>
+                  </label>
+                </div>
+              )}
+
+              {/* Precio simple */}
               {!isBathForm && (
                 <div>
                   <label className="label">Precio</label>
@@ -207,53 +304,28 @@ export default function Services({ clinic }) {
               {/* Panel de baño */}
               {isBathForm && (
                 <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                  {/* Rangos */}
                   <div style={{ background:'var(--bg)', borderRadius:12, padding:14 }}>
                     <p style={{ fontSize:12, fontWeight:700, color:'var(--text-secondary)', textTransform:'uppercase', letterSpacing:'0.5px', margin:'0 0 10px' }}>Rangos de talla por peso</p>
                     <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
-                      <div>
-                        <label className="label">Chico hasta (kg)</label>
-                        <input className="input" type="number" value={form.small_max_kg} onChange={e => setForm(f=>({...f,small_max_kg:e.target.value}))} placeholder="10" />
-                      </div>
-                      <div>
-                        <label className="label">Mediano hasta (kg)</label>
-                        <input className="input" type="number" value={form.medium_max_kg} onChange={e => setForm(f=>({...f,medium_max_kg:e.target.value}))} placeholder="20" />
-                      </div>
-                      <div>
-                        <label className="label">Grande hasta (kg)</label>
-                        <input className="input" type="number" value={form.large_max_kg} onChange={e => setForm(f=>({...f,large_max_kg:e.target.value}))} placeholder="40" />
-                      </div>
+                      <div><label className="label">Chico hasta (kg)</label><input className="input" type="number" value={form.small_max_kg} onChange={e => setForm(f=>({...f,small_max_kg:e.target.value}))} placeholder="10" /></div>
+                      <div><label className="label">Mediano hasta (kg)</label><input className="input" type="number" value={form.medium_max_kg} onChange={e => setForm(f=>({...f,medium_max_kg:e.target.value}))} placeholder="20" /></div>
+                      <div><label className="label">Grande hasta (kg)</label><input className="input" type="number" value={form.large_max_kg} onChange={e => setForm(f=>({...f,large_max_kg:e.target.value}))} placeholder="40" /></div>
                     </div>
                   </div>
-                  {/* Precios */}
                   <div style={{ background:'var(--bg)', borderRadius:12, padding:14 }}>
                     <p style={{ fontSize:12, fontWeight:700, color:'var(--text-secondary)', textTransform:'uppercase', letterSpacing:'0.5px', margin:'0 0 10px' }}>Precios por talla</p>
                     <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
-                      <div>
-                        <label className="label">🐕 Chico</label>
-                        <input className="input" type="number" value={form.price_small} onChange={e => setForm(f=>({...f,price_small:e.target.value}))} placeholder="150" />
-                      </div>
-                      <div>
-                        <label className="label">🐕 Mediano</label>
-                        <input className="input" type="number" value={form.price_medium} onChange={e => setForm(f=>({...f,price_medium:e.target.value}))} placeholder="200" />
-                      </div>
-                      <div>
-                        <label className="label">🐕 Grande</label>
-                        <input className="input" type="number" value={form.price_large} onChange={e => setForm(f=>({...f,price_large:e.target.value}))} placeholder="250" />
-                      </div>
+                      <div><label className="label">🐕 Chico</label><input className="input" type="number" value={form.price_small} onChange={e => setForm(f=>({...f,price_small:e.target.value}))} placeholder="150" /></div>
+                      <div><label className="label">🐕 Mediano</label><input className="input" type="number" value={form.price_medium} onChange={e => setForm(f=>({...f,price_medium:e.target.value}))} placeholder="200" /></div>
+                      <div><label className="label">🐕 Grande</label><input className="input" type="number" value={form.price_large} onChange={e => setForm(f=>({...f,price_large:e.target.value}))} placeholder="250" /></div>
                     </div>
                   </div>
-                  {/* Extras */}
                   <div style={{ background:'var(--bg)', borderRadius:12, padding:14 }}>
                     <p style={{ fontSize:12, fontWeight:700, color:'var(--text-secondary)', textTransform:'uppercase', letterSpacing:'0.5px', margin:'0 0 10px' }}>Extras (opcional)</p>
                     {[1,2,3].map(n => (
                       <div key={n} style={{ display:'grid', gridTemplateColumns:'1fr 90px', gap:8, marginBottom:8 }}>
-                        <input className="input" value={form[`extra_${n}_name`]}
-                          onChange={e => setForm(f=>({...f,[`extra_${n}_name`]:e.target.value}))}
-                          placeholder={`Extra ${n} — ej: Perfume, Moño, Corte de uñas`} />
-                        <input className="input" type="number" value={form[`extra_${n}_price`]}
-                          onChange={e => setForm(f=>({...f,[`extra_${n}_price`]:e.target.value}))}
-                          placeholder="$0" />
+                        <input className="input" value={form[`extra_${n}_name`]} onChange={e => setForm(f=>({...f,[`extra_${n}_name`]:e.target.value}))} placeholder={`Extra ${n} — ej: Perfume, Moño, Corte de uñas`} />
+                        <input className="input" type="number" value={form[`extra_${n}_price`]} onChange={e => setForm(f=>({...f,[`extra_${n}_price`]:e.target.value}))} placeholder="$0" />
                       </div>
                     ))}
                   </div>
