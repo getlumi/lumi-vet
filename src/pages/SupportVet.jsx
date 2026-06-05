@@ -206,11 +206,11 @@ export default function SupportVet({ clinic }) {
             onChange={e => setText(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
             placeholder="Escribe tu mensaje..."
-            rows={2}
             style={{
               flex:1, border:'none', background:'transparent',
               fontSize:14, fontFamily:'inherit', resize:'none', outline:'none',
               lineHeight:1.5, color:'var(--text-primary)',
+              height:44, maxHeight:44, overflowY:'auto',
             }}
           />
           <button onClick={send} disabled={!text.trim() || sending}
