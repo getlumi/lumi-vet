@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import jsPDF from 'jspdf'
 
-const HOURS = ['08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30','18:00']
-
 const localToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Cancun' }).format(new Date())
 
 export default function Patients({ clinic, openNew }) {
@@ -21,7 +19,6 @@ export default function Patients({ clinic, openNew }) {
   const [showNew, setShowNew]               = useState(openNew || false)
   const [showVisit, setShowVisit]           = useState(false)
   const [showCarnet, setShowCarnet]         = useState(false)
-  const [showAppt, setShowAppt]             = useState(false)
   const [showCert, setShowCert]             = useState(false)
   const [pointsMsg, setPointsMsg]           = useState(null)
   const [saving, setSaving]                 = useState(false)
@@ -45,10 +42,8 @@ export default function Patients({ clinic, openNew }) {
   const [invSearch, setInvSearch]           = useState('')
 
   const [recordForm, setRecordForm]         = useState({ diagnosis:'', treatment:'', notes:'', weight:'', temperature:'', next_visit:'' })
-  const [apptForm, setApptForm]             = useState({ date: localToday(), time:'09:00', notes:'', status:'confirmed', price:'', lumi_code:'' })
   const [newForm, setNewForm]               = useState({ owner_name:'', owner_phone:'', owner_email:'', pet_name:'', pet_type:'perro', breed:'', weight:'', gender:'macho', notes:'' })
 
-  // Certificado de salud
   const [certForm, setCertForm] = useState({
     weight: '', temperature: '', condition: 'apto',
     observations: '', valid_days: '10', firma_pin: ''
@@ -76,7 +71,7 @@ export default function Patients({ clinic, openNew }) {
 
     const { data: svcs } = await supabase
       .from('vet_services')
-      .select('id,name,price,is_bath_service,price_small,price_medium,price_large,small_max_kg,medium_max_kg,large_max_kg,extra_1_name,extra_1_price,extra_2_name,extra_2_price,extra_3_name,extra_3_price')
+      .select('id,name,price,category,is_bath_service,price_small,price_medium,price_large,small_max_kg,medium_max_kg,large_max_kg,extra_1_name,extra_1_price,extra_2_name,extra_2_price,extra_3_name,extra_3_price')
       .eq('clinic_id', clinic.id).eq('is_active', true).order('name')
     setVetServices(svcs || [])
   }
@@ -231,20 +226,6 @@ export default function Patients({ clinic, openNew }) {
 
   const cartTotal = cartItems.reduce((sum, c) => sum + c.qty * c.unit_price, 0)
 
-  const saveAppt = async () => {
-    const petName   = selectedType === 'lumi' ? selected.pets?.name    : selected.pet_name
-    const ownerName = selectedType === 'lumi' ? selected.profiles?.name : selected.owner_name
-    await supabase.from('vet_appointments').insert({
-      clinic_id: clinic.id, pet_id: selectedType === 'lumi' ? selected.pet_id : null,
-      pet_name: petName, owner_name: ownerName, date: apptForm.date, time: apptForm.time,
-      notes: apptForm.notes, status: apptForm.status, price: apptForm.price ? parseFloat(apptForm.price) : null,
-    })
-    setShowAppt(false)
-    setApptForm({ date: localToday(), time:'09:00', notes:'', status:'confirmed', price:'' })
-    setPointsMsg('Cita agendada correctamente')
-    setTimeout(() => setPointsMsg(null), 3000)
-  }
-
   const verifyCarnetCode = async () => {
     setCarnetError('')
     const { data } = await supabase.from('vet_auth_codes').select('*')
@@ -281,69 +262,37 @@ export default function Patients({ clinic, openNew }) {
     setTimeout(() => setPointsMsg(null), 4000)
   }
 
-  // Guardar certificado de salud + generar PDF
   const saveCertificate = async () => {
-    // Validar PIN si la clínica tiene uno configurado
     if (clinic.firma_pin) {
-      if (!certForm.firma_pin) {
-        alert('Ingresa tu PIN de firma para autorizar el certificado')
-        setSaving(false)
-        return
-      }
-      if (certForm.firma_pin !== clinic.firma_pin) {
-        alert('PIN incorrecto. Verifica tu PIN de firma en Ajustes.')
-        setSaving(false)
-        return
-      }
+      if (!certForm.firma_pin) { alert('Ingresa tu PIN de firma para autorizar el certificado'); return }
+      if (certForm.firma_pin !== clinic.firma_pin) { alert('PIN incorrecto. Verifica tu PIN de firma en Ajustes.'); return }
     }
-
     setSaving(true)
     const validUntil = new Date()
     validUntil.setDate(validUntil.getDate() + parseInt(certForm.valid_days || 10))
-
     const firmaVerificada = !!(clinic.firma_pin && certForm.firma_pin === clinic.firma_pin)
-
     const { data: cert, error } = await supabase.from('health_certificates').insert({
-      pet_id:              selected.pet_id,
-      clinic_id:           clinic.id,
-      vet_nombre:          clinic.nombre_vet  || null,
-      vet_cedula:          clinic.cedula      || null,
-      clinic_name:         clinic.name,
-      clinic_logo_url:     clinic.logo_url    || null,
-      weight:              certForm.weight      ? parseFloat(certForm.weight) : null,
-      temperature:         certForm.temperature ? parseFloat(certForm.temperature) : null,
-      condition:           certForm.condition,
-      observations:        certForm.observations || null,
-      valid_until:         validUntil.toISOString().slice(0,10),
-      firma_verificada:    firmaVerificada,
+      pet_id: selected.pet_id, clinic_id: clinic.id,
+      vet_nombre: clinic.nombre_vet || null, vet_cedula: clinic.cedula || null,
+      clinic_name: clinic.name, clinic_logo_url: clinic.logo_url || null,
+      weight: certForm.weight ? parseFloat(certForm.weight) : null,
+      temperature: certForm.temperature ? parseFloat(certForm.temperature) : null,
+      condition: certForm.condition, observations: certForm.observations || null,
+      valid_until: validUntil.toISOString().slice(0,10), firma_verificada: firmaVerificada,
     }).select().single()
-
     if (error) { console.error(error); setSaving(false); return }
-
-    // Guardar código de verificación (primeros 8 chars del UUID)
     const codigoVerificacion = cert.id.replace(/-/g,'').slice(0,8).toUpperCase()
-    await supabase.from('health_certificates')
-      .update({ codigo_verificacion: codigoVerificacion })
-      .eq('id', cert.id)
-
+    await supabase.from('health_certificates').update({ codigo_verificacion: codigoVerificacion }).eq('id', cert.id)
     const certConCodigo = { ...cert, codigo_verificacion: codigoVerificacion, firma_verificada: firmaVerificada }
-
-    // Notificar al dueño
     if (selected.owner_id) {
       await supabase.from('notifications').insert({
-        user_id:     selected.owner_id,
-        type:        'health_certificate',
-        title:       'Certificado de salud emitido',
-        body:        `${clinic.name} emitio un certificado de salud para ${selected.pets?.name}. Valido hasta el ${validUntil.toLocaleDateString('es-MX',{day:'numeric',month:'long'})}.`,
-        from_pet_id: selected.pet_id,
-        data:        JSON.stringify({ cert_id: cert.id }),
-        read:        false,
+        user_id: selected.owner_id, type: 'health_certificate',
+        title: 'Certificado de salud emitido',
+        body: `${clinic.name} emitio un certificado de salud para ${selected.pets?.name}. Valido hasta el ${validUntil.toLocaleDateString('es-MX',{day:'numeric',month:'long'})}.`,
+        from_pet_id: selected.pet_id, data: JSON.stringify({ cert_id: cert.id }), read: false,
       })
     }
-
-    // Generar PDF con QR
     await generateCertPDF(certConCodigo)
-
     await fetchLumiRecords(selected.pet_id)
     setShowCert(false)
     setCertForm({ weight:'', temperature:'', condition:'apto', observations:'', valid_days:'10', firma_pin:'' })
@@ -358,287 +307,149 @@ export default function Patients({ clinic, openNew }) {
     const pet = selected.pets
     const owner = selected.profiles
 
-    // Header elegante
-    doc.setFillColor(248, 248, 250)
-    doc.rect(0, 0, W, 48, 'F')
-    doc.setFillColor(107, 33, 168)
-    doc.rect(0, 0, W, 3, 'F')
-
-    doc.setFontSize(18)
-    doc.setFont('helvetica', 'bold')
-    doc.setTextColor(40, 40, 40)
+    doc.setFillColor(248, 248, 250); doc.rect(0, 0, W, 48, 'F')
+    doc.setFillColor(107, 33, 168); doc.rect(0, 0, W, 3, 'F')
+    doc.setFontSize(18); doc.setFont('helvetica', 'bold'); doc.setTextColor(40, 40, 40)
     doc.text(cert.clinic_name || clinic.name || 'Clinica Veterinaria', M, 22)
-
-    doc.setFontSize(8)
-    doc.setFont('helvetica', 'normal')
-    doc.setTextColor(120, 120, 120)
+    doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(120, 120, 120)
     if (clinic.address) doc.text(clinic.address, M, 29)
     if (clinic.phone)   doc.text('Tel: ' + clinic.phone, M, 34)
-
-    doc.setFontSize(8)
-    doc.setTextColor(107, 33, 168)
-    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8); doc.setTextColor(107, 33, 168); doc.setFont('helvetica', 'bold')
     doc.text('LUMI', W - M, 18, { align: 'right' })
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(7)
-    doc.setTextColor(150, 150, 150)
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(150, 150, 150)
     doc.text('Plataforma veterinaria digital', W - M, 23, { align: 'right' })
-
-    doc.setFontSize(14)
-    doc.setFont('helvetica', 'bold')
-    doc.setTextColor(40, 40, 40)
+    doc.setFontSize(14); doc.setFont('helvetica', 'bold'); doc.setTextColor(40, 40, 40)
     doc.text('CERTIFICADO DE SALUD ANIMAL', W / 2, 58, { align: 'center' })
-    doc.setFontSize(8)
-    doc.setFont('helvetica', 'normal')
-    doc.setTextColor(150, 150, 150)
+    doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(150, 150, 150)
     doc.text('Documento oficial para tramites de viaje', W / 2, 64, { align: 'center' })
-
-    doc.setDrawColor(220, 220, 225)
-    doc.setLineWidth(0.4)
-    doc.line(M, 68, W - M, 68)
+    doc.setDrawColor(220, 220, 225); doc.setLineWidth(0.4); doc.line(M, 68, W - M, 68)
 
     let y = 76
-
-    // Metadatos
-    doc.setFontSize(7.5)
-    doc.setTextColor(140, 140, 140)
-    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7.5); doc.setTextColor(140, 140, 140); doc.setFont('helvetica', 'normal')
     doc.text('No. ' + cert.id.slice(0, 8).toUpperCase(), M, y)
     doc.text('Emitido: ' + new Date(cert.issued_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' }), W / 2, y, { align: 'center' })
     doc.text('Valido hasta: ' + new Date(cert.valid_until + 'T12:00:00').toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' }), W - M, y, { align: 'right' })
     y += 10
 
-    // Dictamen — colores suaves sin cuarto parámetro
-    const isApto = cert.condition === 'apto'
-    const isCond = cert.condition === 'condicionado'
-    if (isApto) {
-      doc.setFillColor(240, 253, 244); doc.setDrawColor(134, 239, 172); doc.setTextColor(22, 163, 74)
-    } else if (isCond) {
-      doc.setFillColor(255, 247, 237); doc.setDrawColor(217, 119, 6); doc.setTextColor(161, 64, 0)
-    } else {
-      doc.setFillColor(254, 242, 242); doc.setDrawColor(220, 38, 38); doc.setTextColor(185, 28, 26)
-    }
-    doc.setLineWidth(0.5)
-    doc.roundedRect(M, y, W - (M * 2), 14, 2, 2, 'FD')
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(11)
-    const condLabel = isApto ? 'APTO PARA VIAJAR' : isCond ? 'APTO CON CONDICIONES' : 'NO APTO PARA VIAJAR'
-    doc.text(condLabel, W / 2, y + 9, { align: 'center' })
+    const isApto = cert.condition === 'apto', isCond = cert.condition === 'condicionado'
+    if (isApto) { doc.setFillColor(240,253,244); doc.setDrawColor(134,239,172); doc.setTextColor(22,163,74) }
+    else if (isCond) { doc.setFillColor(255,247,237); doc.setDrawColor(217,119,6); doc.setTextColor(161,64,0) }
+    else { doc.setFillColor(254,242,242); doc.setDrawColor(220,38,38); doc.setTextColor(185,28,26) }
+    doc.setLineWidth(0.5); doc.roundedRect(M, y, W-(M*2), 14, 2, 2, 'FD')
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11)
+    doc.text(isApto?'APTO PARA VIAJAR':isCond?'APTO CON CONDICIONES':'NO APTO PARA VIAJAR', W/2, y+9, { align:'center' })
     y += 20
 
-    // Datos mascota
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(8)
-    doc.setTextColor(107, 33, 168)
+    doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(107,33,168)
     doc.text('DATOS DE LA MASCOTA', M, y)
-    y += 4
-    doc.setDrawColor(220, 220, 225)
-    doc.setLineWidth(0.3)
-    doc.line(M, y, W - M, y)
-    y += 6
-
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(12)
-    doc.setTextColor(30, 30, 30)
+    y += 4; doc.setDrawColor(220,220,225); doc.setLineWidth(0.3); doc.line(M,y,W-M,y); y += 6
+    doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(30,30,30)
     doc.text(pet?.name || '—', M, y)
-    if (pet?.lumi_id) {
-      doc.setFont('helvetica', 'normal')
-      doc.setFontSize(8)
-      doc.setTextColor(107, 33, 168)
-      doc.text('ID: ' + pet.lumi_id, W - M, y, { align: 'right' })
-    }
+    if (pet?.lumi_id) { doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(107,33,168); doc.text('ID: '+pet.lumi_id, W-M, y, { align:'right' }) }
     y += 6
-
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(9)
-    doc.setTextColor(80, 80, 80)
-    const edad = pet?.birthdate ? Math.floor((Date.now() - new Date(pet.birthdate)) / (1000 * 60 * 60 * 24 * 365.25)) + ' anos' : '—'
-    doc.text('Especie: ' + (pet?.pet_type || '—'), M, y)
-    doc.text('Raza: ' + (pet?.breed || '—'), M + 45, y)
-    doc.text('Genero: ' + (pet?.gender || '—'), M + 100, y)
-    doc.text('Edad: ' + edad, M + 145, y)
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(80,80,80)
+    const edad = pet?.birthdate ? Math.floor((Date.now()-new Date(pet.birthdate))/(1000*60*60*24*365.25))+' anos' : '—'
+    doc.text('Especie: '+(pet?.pet_type||'—'), M, y)
+    doc.text('Raza: '+(pet?.breed||'—'), M+45, y)
+    doc.text('Genero: '+(pet?.gender||'—'), M+100, y)
+    doc.text('Edad: '+edad, M+145, y)
     y += 6
     if (cert.weight || cert.temperature) {
-      doc.setTextColor(100, 100, 100)
-      if (cert.weight)      doc.text('Peso: ' + cert.weight + ' kg', M, y)
-      if (cert.temperature) doc.text('Temperatura: ' + cert.temperature + ' C', M + 45, y)
+      doc.setTextColor(100,100,100)
+      if (cert.weight) doc.text('Peso: '+cert.weight+' kg', M, y)
+      if (cert.temperature) doc.text('Temperatura: '+cert.temperature+' C', M+45, y)
       y += 6
     }
     y += 4
 
-    // Datos propietario
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(8)
-    doc.setTextColor(107, 33, 168)
+    doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(107,33,168)
     doc.text('DATOS DEL PROPIETARIO', M, y)
-    y += 4
-    doc.setDrawColor(220, 220, 225)
-    doc.line(M, y, W - M, y)
+    y += 4; doc.setDrawColor(220,220,225); doc.line(M,y,W-M,y); y += 6
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(60,60,60)
+    doc.text('Nombre: '+(owner?.name||'—'), M, y)
+    if (owner?.phone) doc.text('Tel: '+owner.phone, M+90, y)
     y += 6
-
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(9)
-    doc.setTextColor(60, 60, 60)
-    doc.text('Nombre: ' + (owner?.name || '—'), M, y)
-    if (owner?.phone) doc.text('Tel: ' + owner.phone, M + 90, y)
-    y += 6
-    if (owner?.email) { doc.text('Email: ' + owner.email, M, y); y += 6 }
+    if (owner?.email) { doc.text('Email: '+owner.email, M, y); y += 6 }
     y += 4
 
-    // Observaciones
     if (cert.observations) {
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(8)
-      doc.setTextColor(107, 33, 168)
+      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(107,33,168)
       doc.text('OBSERVACIONES', M, y)
-      y += 4
-      doc.setDrawColor(220, 220, 225)
-      doc.line(M, y, W - M, y)
-      y += 6
-      doc.setFont('helvetica', 'normal')
-      doc.setFontSize(9)
-      doc.setTextColor(60, 60, 60)
-      const obsLines = doc.splitTextToSize(cert.observations, W - (M * 2))
-      doc.text(obsLines, M, y)
-      y += obsLines.length * 5 + 6
+      y += 4; doc.setDrawColor(220,220,225); doc.line(M,y,W-M,y); y += 6
+      doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(60,60,60)
+      const obsLines = doc.splitTextToSize(cert.observations, W-(M*2))
+      doc.text(obsLines, M, y); y += obsLines.length * 5 + 6
     }
 
-    // Vacunas
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(8)
-    doc.setTextColor(107, 33, 168)
+    doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(107,33,168)
     doc.text('VACUNAS REGISTRADAS', M, y)
-    y += 4
-    doc.setDrawColor(220, 220, 225)
-    doc.line(M, y, W - M, y)
-    y += 6
-
+    y += 4; doc.setDrawColor(220,220,225); doc.line(M,y,W-M,y); y += 6
     if (vaccines.length === 0) {
-      doc.setFont('helvetica', 'italic')
-      doc.setFontSize(8.5)
-      doc.setTextColor(160, 160, 160)
-      doc.text('Sin vacunas registradas en el sistema', M, y)
-      y += 8
+      doc.setFont('helvetica','italic'); doc.setFontSize(8.5); doc.setTextColor(160,160,160)
+      doc.text('Sin vacunas registradas en el sistema', M, y); y += 8
     } else {
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(7.5)
-      doc.setTextColor(120, 120, 120)
-      doc.text('VACUNA', M, y)
-      doc.text('APLICADA', M + 80, y)
-      doc.text('REFUERZO', M + 125, y)
-      doc.text('ESTADO', W - M, y, { align: 'right' })
-      y += 3
-      doc.setDrawColor(200, 200, 205)
-      doc.line(M, y, W - M, y)
-      y += 5
-
-      vaccines.slice(0, 6).forEach(v => {
+      doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(120,120,120)
+      doc.text('VACUNA', M, y); doc.text('APLICADA', M+80, y); doc.text('REFUERZO', M+125, y); doc.text('ESTADO', W-M, y, { align:'right' })
+      y += 3; doc.setDrawColor(200,200,205); doc.line(M,y,W-M,y); y += 5
+      vaccines.slice(0,6).forEach(v => {
         if (y > 235) { doc.addPage(); y = 20 }
-        doc.setFont('helvetica', 'bold')
-        doc.setFontSize(8.5)
-        doc.setTextColor(40, 40, 40)
-        doc.text(v.name || '—', M, y)
-        doc.setFont('helvetica', 'normal')
-        doc.setFontSize(8)
-        doc.setTextColor(80, 80, 80)
-        const applied = v.applied_date ? new Date(v.applied_date + 'T12:00:00').toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
-        const next = v.next_date ? new Date(v.next_date + 'T12:00:00').toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
-        doc.text(applied, M + 80, y)
-        doc.text(next, M + 125, y)
-        if (v.registered_by === 'vet') {
-          doc.setTextColor(22, 163, 74); doc.setFont('helvetica', 'bold')
-          doc.text('Verificado', W - M, y, { align: 'right' })
-        } else {
-          doc.setTextColor(160, 160, 160); doc.setFont('helvetica', 'normal')
-          doc.text('Manual', W - M, y, { align: 'right' })
-        }
-        y += 4
-        doc.setDrawColor(235, 235, 238)
-        doc.setLineWidth(0.2)
-        doc.line(M, y, W - M, y)
-        y += 4
+        doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(40,40,40)
+        doc.text(v.name||'—', M, y)
+        doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(80,80,80)
+        const applied = v.applied_date ? new Date(v.applied_date+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'short',year:'numeric'}) : '—'
+        const next = v.next_date ? new Date(v.next_date+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'short',year:'numeric'}) : '—'
+        doc.text(applied, M+80, y); doc.text(next, M+125, y)
+        if (v.registered_by==='vet') { doc.setTextColor(22,163,74); doc.setFont('helvetica','bold'); doc.text('Verificado', W-M, y, { align:'right' }) }
+        else { doc.setTextColor(160,160,160); doc.setFont('helvetica','normal'); doc.text('Manual', W-M, y, { align:'right' }) }
+        y += 4; doc.setDrawColor(235,235,238); doc.setLineWidth(0.2); doc.line(M,y,W-M,y); y += 4
       })
     }
-
     y += 6
 
-    // Firma
     if (y > 230) { doc.addPage(); y = 20 }
-
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(9)
-    doc.setTextColor(40, 40, 40)
-    const vetNombre = cert.vet_nombre || clinic.nombre_vet || 'Medico Veterinario'
-    doc.text('Dr. ' + vetNombre, M, y + 23)
-
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(8)
-    doc.setTextColor(100, 100, 100)
+    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(40,40,40)
+    doc.text('Dr. '+(cert.vet_nombre||clinic.nombre_vet||'Medico Veterinario'), M, y+23)
+    doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(100,100,100)
     const vetCedula = cert.vet_cedula || clinic.cedula
-    if (vetCedula) { doc.text('Cedula Profesional: ' + vetCedula, M, y + 29) }
-    doc.text(cert.clinic_name || clinic.name || '', M, y + 35)
+    if (vetCedula) doc.text('Cedula Profesional: '+vetCedula, M, y+29)
+    doc.text(cert.clinic_name||clinic.name||'', M, y+35)
 
-    // Badge firma verificada — prominente
     if (cert.firma_verificada) {
-      doc.setFillColor(220, 252, 231)
-      doc.setDrawColor(134, 239, 172)
-      doc.setLineWidth(0.5)
-      doc.roundedRect(M, y + 18, 90, 10, 2, 2, 'FD')
-      doc.setFontSize(8)
-      doc.setFont('helvetica', 'bold')
-      doc.setTextColor(22, 163, 74)
-      doc.text('✓ Firmado digitalmente · Lumi Vet', M + 3, y + 25)
-    } else {
-      doc.setFontSize(8)
-      doc.setFont('helvetica', 'normal')
-      doc.setTextColor(150, 150, 150)
-      doc.text('Médico Veterinario', M, y + 23)
+      doc.setFillColor(220,252,231); doc.setDrawColor(134,239,172); doc.setLineWidth(0.5)
+      doc.roundedRect(M, y+18, 90, 10, 2, 2, 'FD')
+      doc.setFontSize(8); doc.setFont('helvetica','bold'); doc.setTextColor(22,163,74)
+      doc.text('✓ Firmado digitalmente · Lumi Vet', M+3, y+25)
     }
 
-    // QR de verificación
     if (cert.codigo_verificacion) {
-      const verifyUrl = 'https://lumi-app-indol.vercel.app?cert=' + cert.codigo_verificacion
-      const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=' + encodeURIComponent(verifyUrl)
+      const verifyUrl = 'https://lumi-app-indol.vercel.app?cert='+cert.codigo_verificacion
+      const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=80x80&data='+encodeURIComponent(verifyUrl)
       try {
-        // Intentar cargar QR — si falla, mostrar texto
-        const qrImg = new Image()
-        qrImg.crossOrigin = 'anonymous'
-        qrImg.src = qrUrl
-        await new Promise((resolve) => { qrImg.onload = resolve; qrImg.onerror = resolve; setTimeout(resolve, 3000) })
+        const qrImg = new Image(); qrImg.crossOrigin = 'anonymous'; qrImg.src = qrUrl
+        await new Promise(resolve => { qrImg.onload = resolve; qrImg.onerror = resolve; setTimeout(resolve, 3000) })
         if (qrImg.complete && qrImg.naturalWidth > 0) {
-          const canvas = document.createElement('canvas')
-          canvas.width = 80; canvas.height = 80
+          const canvas = document.createElement('canvas'); canvas.width = 80; canvas.height = 80
           canvas.getContext('2d').drawImage(qrImg, 0, 0, 80, 80)
-          const qrBase64 = canvas.toDataURL('image/png')
-          doc.addImage(qrBase64, 'PNG', W - M - 22, y + 15, 22, 22)
+          doc.addImage(canvas.toDataURL('image/png'), 'PNG', W-M-22, y+15, 22, 22)
         }
-      } catch(e) { /* QR no disponible */ }
-
-      doc.setFontSize(7)
-      doc.setTextColor(100, 100, 100)
-      doc.setFont('helvetica', 'bold')
-      doc.text('Verificar autenticidad:', W - M, y + 42, { align: 'right' })
-      doc.setFont('helvetica', 'normal')
-      doc.setTextColor(107, 33, 168)
-      doc.text('lumi-app-indol.vercel.app?cert=' + cert.codigo_verificacion, W - M, y + 47, { align: 'right' })
+      } catch(e) {}
+      doc.setFontSize(7); doc.setTextColor(100,100,100); doc.setFont('helvetica','bold')
+      doc.text('Verificar autenticidad:', W-M, y+42, { align:'right' })
+      doc.setFont('helvetica','normal'); doc.setTextColor(107,33,168)
+      doc.text('lumi-app-indol.vercel.app?cert='+cert.codigo_verificacion, W-M, y+47, { align:'right' })
     }
 
-    // Footer
-    doc.setFillColor(248, 248, 250)
-    doc.rect(0, 277, W, 20, 'F')
-    doc.setFillColor(107, 33, 168)
-    doc.rect(0, 277, W, 1, 'F')
-    doc.setFontSize(7)
-    doc.setTextColor(150, 150, 150)
-    doc.setFont('helvetica', 'normal')
-    doc.text('Documento generado por Lumi — La luz de tu mascota | hola@getlumi.mx', W / 2, 282, { align: 'center' })
-    doc.text('Los requisitos de viaje pueden variar segun destino. Verifique con las autoridades antes de viajar.', W / 2, 287, { align: 'center' })
-
-    doc.save('Certificado_Salud_' + (pet?.name || 'mascota') + '_' + new Date().toISOString().slice(0, 10) + '.pdf')
+    doc.setFillColor(248,248,250); doc.rect(0,277,W,20,'F')
+    doc.setFillColor(107,33,168); doc.rect(0,277,W,1,'F')
+    doc.setFontSize(7); doc.setTextColor(150,150,150); doc.setFont('helvetica','normal')
+    doc.text('Documento generado por Lumi — La luz de tu mascota | hola@getlumi.mx', W/2, 282, { align:'center' })
+    doc.text('Los requisitos de viaje pueden variar segun destino. Verifique con las autoridades antes de viajar.', W/2, 287, { align:'center' })
+    doc.save('Certificado_Salud_'+(pet?.name||'mascota')+'_'+new Date().toISOString().slice(0,10)+'.pdf')
   }
+
   const calcAge = (bd) => {
     if (!bd) return null
-    const y = Math.floor((Date.now() - new Date(bd)) / (1000*60*60*24*365.25))
+    const y = Math.floor((Date.now()-new Date(bd))/(1000*60*60*24*365.25))
     return y > 0 ? `${y} años` : 'Cachorro'
   }
 
@@ -650,8 +461,8 @@ export default function Patients({ clinic, openNew }) {
   const formatLumiId = (raw) => {
     const clean = raw.toUpperCase().replace(/[^A-Z0-9]/g, '')
     if (clean.length <= 3) return clean
-    if (clean.length <= 7) return clean.slice(0,3) + '-' + clean.slice(3)
-    return clean.slice(0,3) + '-' + clean.slice(3,7) + '-' + clean.slice(7,13)
+    if (clean.length <= 7) return clean.slice(0,3)+'-'+clean.slice(3)
+    return clean.slice(0,3)+'-'+clean.slice(3,7)+'-'+clean.slice(7,13)
   }
 
   const searchNorm = search.toLowerCase().replace(/[^a-z0-9]/g, '')
@@ -694,7 +505,7 @@ export default function Patients({ clinic, openNew }) {
         <div style={{ display:'flex', marginBottom:14, border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
           {[{key:'todos',label:`Todos (${allPatients.length})`},{key:'lumi',label:`Lumi (${lumiPatients.length})`},{key:'regular',label:`Regular (${regularPatients.length})`}].map(t => (
             <button key={t.key} onClick={() => { setTab(t.key); setSelected(null) }}
-              style={{ flex:1, padding:'9px 0', fontSize:12, fontWeight:700, border:'none', cursor:'pointer', background: tab===t.key ? '#6B21A8' : 'white', color: tab===t.key ? 'white' : 'var(--text-secondary)' }}>
+              style={{ flex:1, padding:'9px 0', fontSize:12, fontWeight:700, border:'none', cursor:'pointer', background: tab===t.key?'#6B21A8':'white', color: tab===t.key?'white':'var(--text-secondary)' }}>
               {t.label}
             </button>
           ))}
@@ -774,12 +585,17 @@ export default function Patients({ clinic, openNew }) {
             </div>
           )}
 
+          {/* Acciones — sin "Agendar cita" */}
           <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap' }}>
-            <button className="btn btn-primary btn-sm" onClick={() => { setShowVisit(true); setVisitType('servicio'); setCartItems([]); setServiceDesc(''); setServicePrice(''); setSelectedServiceId('') }}><i className="ti ti-plus" /> + Visita</button>
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowRecord(true)}><i className="ti ti-file-plus" /> Consulta</button>
-            <button className="btn btn-secondary btn-sm" onClick={() => { setShowAppt(true); setApptForm(f=>({...f, lumi_code:selectedType==='lumi'?(selected.pets?.lumi_id||''):''})) }}><i className="ti ti-calendar-plus" /> Agendar cita</button>
+            <button className="btn btn-primary btn-sm" onClick={() => { setShowVisit(true); setVisitType('servicio'); setCartItems([]); setServiceDesc(''); setServicePrice(''); setSelectedServiceId('') }}>
+              <i className="ti ti-plus" /> + Visita
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowRecord(true)}>
+              <i className="ti ti-file-plus" /> Consulta
+            </button>
             {selectedType === 'lumi' && (<>
-              <button className="btn btn-secondary btn-sm" style={{ color:'var(--purple)', borderColor:'var(--purple)' }} onClick={() => { setShowCarnet(true); setCarnetStep('code'); setCarnetCode(''); setCarnetError('') }}>
+              <button className="btn btn-secondary btn-sm" style={{ color:'var(--purple)', borderColor:'var(--purple)' }}
+                onClick={() => { setShowCarnet(true); setCarnetStep('code'); setCarnetCode(''); setCarnetError('') }}>
                 <i className="ti ti-certificate" /> Actualizar carnet
               </button>
               <button className="btn btn-secondary btn-sm" style={{ color:'#0EA5E9', borderColor:'#0EA5E9' }} onClick={() => setShowCert(true)}>
@@ -798,7 +614,6 @@ export default function Patients({ clinic, openNew }) {
             {selectedType==='lumi' && <div style={{ marginTop:10, padding:'7px 12px', background:'#EDE9FE', borderRadius:8, fontSize:12, color:'#6B21A8', fontWeight:600 }}>{selected.pets?.lumi_id} · Consulta otorgara +15 puntos</div>}
           </div>
 
-          {/* Certificados emitidos */}
           {selectedType==='lumi' && certificates.length > 0 && (
             <div className="card" style={{ marginBottom:14, border:'1px solid #BAE6FD' }}>
               <p style={{ fontSize:13, fontWeight:800, margin:'0 0 12px', color:'#0369A1' }}>Certificados de Salud emitidos</p>
@@ -808,11 +623,10 @@ export default function Patients({ clinic, openNew }) {
                   <div key={c.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 12px', background: vigente?'#F0F9FF':'#F8F8F8', borderRadius:8, marginBottom:6, border:`1px solid ${vigente?'#BAE6FD':'#E5E7EB'}` }}>
                     <div>
                       <p style={{ fontSize:12, fontWeight:700, color: vigente?'#0369A1':'var(--text-muted)', margin:0 }}>
-                        {c.condition === 'apto' ? 'APTO PARA VIAJAR' : c.condition === 'condicionado' ? 'APTO CON CONDICIONES' : 'NO APTO'}
+                        {c.condition==='apto'?'APTO PARA VIAJAR':c.condition==='condicionado'?'APTO CON CONDICIONES':'NO APTO'}
                       </p>
                       <p style={{ fontSize:11, color:'var(--text-muted)', margin:0 }}>
-                        Emitido: {new Date(c.issued_at).toLocaleDateString('es-MX',{day:'numeric',month:'short',year:'numeric'})} · 
-                        Valido hasta: {new Date(c.valid_until+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'short',year:'numeric'})}
+                        Emitido: {new Date(c.issued_at).toLocaleDateString('es-MX',{day:'numeric',month:'short',year:'numeric'})} · Valido hasta: {new Date(c.valid_until+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'short',year:'numeric'})}
                       </p>
                     </div>
                     <div style={{ display:'flex', alignItems:'center', gap:8 }}>
@@ -906,7 +720,7 @@ export default function Patients({ clinic, openNew }) {
                     <option value="">— Seleccionar servicio —</option>
                     {vetServices.map(s => (
                       <option key={s.id} value={s.id}>
-                        {s.name}{s.is_bath_service ? ' 🛁' : ''}{s.price ? ` — $${s.price}` : ''}
+                        {s.name}{s.is_bath_service?' 🛁':''}{s.price?` — $${s.price}`:''}
                       </option>
                     ))}
                   </select>
@@ -950,30 +764,6 @@ export default function Patients({ clinic, openNew }) {
               <button className="btn btn-primary" onClick={saveVisit} disabled={visitType==='servicio'?!serviceDesc:cartItems.length===0} style={{ flex:2, justifyContent:'center' }}>
                 Registrar visita {visitType==='producto'&&cartItems.length>0?`· $${cartTotal.toFixed(2)}`:''}
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL CITA */}
-      {showAppt && (
-        <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setShowAppt(false)}>
-          <div className="modal">
-            <p style={{ fontSize:17, fontWeight:800, margin:'0 0 6px' }}>Agendar cita</p>
-            <p style={{ fontSize:13, color:'var(--text-secondary)', margin:'0 0 20px' }}>{petName} · {ownerName}</p>
-            <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-              {selectedType==='lumi' && <div><label className="label">Codigo Lumi</label><input className="input" value={apptForm.lumi_code} readOnly style={{ fontFamily:'monospace', letterSpacing:'1px', background:'#F5F3FF', color:'#6B21A8', fontWeight:600 }} /></div>}
-              <div className="grid-2">
-                <div><label className="label">Fecha *</label><input className="input" type="date" value={apptForm.date} onChange={e => setApptForm(f=>({...f,date:e.target.value}))} /></div>
-                <div><label className="label">Hora *</label><select className="input" value={apptForm.time} onChange={e => setApptForm(f=>({...f,time:e.target.value}))}>{HOURS.map(h=><option key={h}>{h}</option>)}</select></div>
-              </div>
-              <div><label className="label">Estado</label><select className="input" value={apptForm.status} onChange={e => setApptForm(f=>({...f,status:e.target.value}))}><option value="confirmed">Confirmada</option><option value="pending">Pendiente</option></select></div>
-              <div><label className="label">Motivo</label><input className="input" value={apptForm.notes} onChange={e => setApptForm(f=>({...f,notes:e.target.value}))} placeholder="Consulta, vacuna, revision..." /></div>
-              <div><label className="label">Precio (opcional)</label><input className="input" type="number" value={apptForm.price} onChange={e => setApptForm(f=>({...f,price:e.target.value}))} placeholder="0.00" /></div>
-              <div style={{ display:'flex', gap:10 }}>
-                <button className="btn btn-secondary" onClick={() => setShowAppt(false)} style={{ flex:1, justifyContent:'center' }}>Cancelar</button>
-                <button className="btn btn-primary" onClick={saveAppt} style={{ flex:2, justifyContent:'center' }}>Guardar cita</button>
-              </div>
             </div>
           </div>
         </div>
@@ -1067,13 +857,11 @@ export default function Patients({ clinic, openNew }) {
                 <p style={{ fontSize:12, color:'var(--text-muted)', margin:0 }}>{petName} · {selected?.pets?.lumi_id}</p>
               </div>
             </div>
-
             {(!clinic.cedula || !clinic.nombre_vet) && (
               <div style={{ background:'#FEF3C7', border:'1px solid #F59E0B', borderRadius:10, padding:'10px 14px', marginBottom:14, fontSize:12, color:'#92400E' }}>
                 Completa tu cedula profesional en Ajustes para que el certificado tenga validez oficial.
               </div>
             )}
-
             {(clinic.nombre_vet || clinic.cedula) && (
               <div style={{ background:'#F0F9FF', border:'1px solid #BAE6FD', borderRadius:10, padding:'10px 14px', marginBottom:14, display:'flex', alignItems:'center', gap:8 }}>
                 <i className="ti ti-certificate" style={{ fontSize:16, color:'#0369A1' }} />
@@ -1083,13 +871,11 @@ export default function Patients({ clinic, openNew }) {
                 </div>
               </div>
             )}
-
             <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
               <div className="grid-2">
                 <div><label className="label">Peso (kg)</label><input className="input" type="number" step="0.1" value={certForm.weight} onChange={e => setCertForm(f=>({...f,weight:e.target.value}))} placeholder="3.5" /></div>
                 <div><label className="label">Temperatura (C)</label><input className="input" type="number" step="0.1" value={certForm.temperature} onChange={e => setCertForm(f=>({...f,temperature:e.target.value}))} placeholder="38.5" /></div>
               </div>
-
               <div>
                 <label className="label">Dictamen *</label>
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
@@ -1101,12 +887,10 @@ export default function Patients({ clinic, openNew }) {
                   ))}
                 </div>
               </div>
-
               <div>
                 <label className="label">Observaciones</label>
                 <textarea className="input" rows={3} value={certForm.observations} onChange={e => setCertForm(f=>({...f,observations:e.target.value}))} placeholder="Estado general, condiciones especiales..." style={{ resize:'vertical' }} />
               </div>
-
               <div>
                 <label className="label">Valido por (dias)</label>
                 <div style={{ display:'flex', gap:8 }}>
@@ -1117,11 +901,7 @@ export default function Patients({ clinic, openNew }) {
                     </button>
                   ))}
                 </div>
-                {certForm.valid_days === '10' && (
-                  <p style={{ fontSize:11, color:'#0369A1', margin:'4px 0 0' }}>Recomendado para viajes internacionales (10 dias antes del viaje)</p>
-                )}
               </div>
-
               <div style={{ display:'flex', gap:10, marginTop:4 }}>
                 <button className="btn btn-secondary" onClick={() => setShowCert(false)} style={{ flex:1, justifyContent:'center' }}>Cancelar</button>
                 <button className="btn btn-primary" onClick={saveCertificate} disabled={saving}
@@ -1130,27 +910,14 @@ export default function Patients({ clinic, openNew }) {
                   {saving ? 'Generando...' : 'Emitir certificado + PDF'}
                 </button>
               </div>
-
-              {/* PIN de firma */}
               {clinic.firma_pin && (
-                <div style={{ marginTop:12, background:'rgba(14,165,233,0.06)', border:'1px solid rgba(14,165,233,0.2)', borderRadius:10, padding:'12px 14px' }}>
+                <div style={{ marginTop:4, background:'rgba(14,165,233,0.06)', border:'1px solid rgba(14,165,233,0.2)', borderRadius:10, padding:'12px 14px' }}>
                   <p style={{ fontSize:12, fontWeight:700, color:'#0369A1', margin:'0 0 8px' }}>
-                    <i className="ti ti-shield-check" style={{ marginRight:6 }} />
-                    PIN de firma digital — requerido para certificar
+                    <i className="ti ti-shield-check" style={{ marginRight:6 }} />PIN de firma digital — requerido para certificar
                   </p>
-                  <input
-                    className="input"
-                    type="password"
-                    inputMode="numeric"
-                    maxLength={6}
-                    placeholder="Ingresa tu PIN de firma"
-                    value={certForm.firma_pin}
-                    onChange={e => setCertForm(f=>({...f, firma_pin:e.target.value.replace(/\D/g,'')}))}
-                    style={{ letterSpacing:'4px', fontSize:16, textAlign:'center' }}
-                  />
-                  <p style={{ fontSize:11, color:'#0369A1', margin:'6px 0 0', opacity:0.8 }}>
-                    Al firmar, el certificado incluirá un QR verificable y badge de autenticidad
-                  </p>
+                  <input className="input" type="password" inputMode="numeric" maxLength={6} placeholder="Ingresa tu PIN de firma"
+                    value={certForm.firma_pin} onChange={e => setCertForm(f=>({...f,firma_pin:e.target.value.replace(/\D/g,'')}))}
+                    style={{ letterSpacing:'4px', fontSize:16, textAlign:'center' }} />
                 </div>
               )}
             </div>
@@ -1191,6 +958,38 @@ export default function Patients({ clinic, openNew }) {
                   </div>
                 )}
                 <button className="btn btn-secondary" onClick={() => setShowNew(false)} style={{ justifyContent:'center' }}>Cancelar</button>
+              </div>
+            )}
+            {tab==='regular' && (
+              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+                <div className="grid-2">
+                  <div><label className="label">Nombre del dueño *</label><input className="input" value={newForm.owner_name} onChange={e => setNewForm(f=>({...f,owner_name:e.target.value}))} placeholder="Juan García" /></div>
+                  <div><label className="label">Teléfono</label><input className="input" type="tel" value={newForm.owner_phone} onChange={e => setNewForm(f=>({...f,owner_phone:e.target.value}))} placeholder="999 123 4567" /></div>
+                </div>
+                <div><label className="label">Email</label><input className="input" type="email" value={newForm.owner_email} onChange={e => setNewForm(f=>({...f,owner_email:e.target.value}))} placeholder="correo@ejemplo.com" /></div>
+                <div className="grid-2">
+                  <div><label className="label">Nombre mascota *</label><input className="input" value={newForm.pet_name} onChange={e => setNewForm(f=>({...f,pet_name:e.target.value}))} placeholder="Max" /></div>
+                  <div><label className="label">Especie</label>
+                    <select className="input" value={newForm.pet_type} onChange={e => setNewForm(f=>({...f,pet_type:e.target.value}))}>
+                      <option value="perro">Perro</option><option value="gato">Gato</option><option value="otro">Otro</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="grid-2">
+                  <div><label className="label">Raza</label><input className="input" value={newForm.breed} onChange={e => setNewForm(f=>({...f,breed:e.target.value}))} placeholder="Labrador..." /></div>
+                  <div><label className="label">Género</label>
+                    <select className="input" value={newForm.gender} onChange={e => setNewForm(f=>({...f,gender:e.target.value}))}>
+                      <option value="macho">Macho</option><option value="hembra">Hembra</option>
+                    </select>
+                  </div>
+                </div>
+                <div><label className="label">Peso (kg)</label><input className="input" type="number" step="0.1" value={newForm.weight} onChange={e => setNewForm(f=>({...f,weight:e.target.value}))} placeholder="3.5" /></div>
+                <div style={{ display:'flex', gap:10 }}>
+                  <button className="btn btn-secondary" onClick={() => setShowNew(false)} style={{ flex:1, justifyContent:'center' }}>Cancelar</button>
+                  <button className="btn btn-primary" onClick={saveNewPatient} disabled={!newForm.owner_name.trim()||!newForm.pet_name.trim()||saving} style={{ flex:2, justifyContent:'center' }}>
+                    {saving?'Guardando...':'Registrar paciente'}
+                  </button>
+                </div>
               </div>
             )}
           </div>
