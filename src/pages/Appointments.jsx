@@ -5,15 +5,43 @@ const HOURS = ['07:00','07:30','08:00','08:30','09:00','09:30','10:00','10:30','
 const STATUS_COLORS = { pending:'badge-amber', confirmed:'badge-green', completed:'badge-purple', cancelled:'badge-red' }
 const STATUS_LABELS = { pending:'Pendiente', confirmed:'Confirmada', completed:'Completada', cancelled:'Cancelada' }
 
-// Fuera del componente — siempre recalcula al llamarse
 const localToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Cancun' }).format(new Date())
-const emptyForm  = () => ({
-  lumi_code:'', pet_id:null, pet_name:'', owner_name:'',
-  date: localToday(),
-  time:'09:00', notes:'', status:'confirmed', price:'',
-  service_id: null, service_name:'',
-  bath_size: null, bath_extras: [],
-})
+
+// Hora actual en Cancún como "HH:MM"
+const localNow = () => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Cancun', hour: '2-digit', minute: '2-digit', hour12: false
+}).format(new Date()).slice(0, 5)
+
+// Horas disponibles según fecha — si es hoy, solo horas futuras (con 30min de margen)
+const getAvailableHours = (date) => {
+  if (date !== localToday()) return HOURS
+  const now = localNow()
+  const [h, m] = now.split(':').map(Number)
+  // Agregar 30 minutos de margen mínimo
+  const minMinutes = h * 60 + m + 30
+  return HOURS.filter(hour => {
+    const [hh, mm] = hour.split(':').map(Number)
+    return hh * 60 + mm > minMinutes
+  })
+}
+
+// Primera hora disponible para hoy, o 09:00 para días futuros
+const getDefaultTime = (date) => {
+  const available = getAvailableHours(date)
+  return available.length > 0 ? available[0] : '09:00'
+}
+
+const emptyForm = () => {
+  const date = localToday()
+  return {
+    lumi_code:'', pet_id:null, pet_name:'', owner_name:'',
+    date,
+    time: getDefaultTime(date),
+    notes:'', status:'confirmed', price:'',
+    service_id: null, service_name:'',
+    bath_size: null, bath_extras: [],
+  }
+}
 
 export default function Appointments({ clinic, initialForm }) {
   const [appointments, setAppointments] = useState([])
@@ -24,6 +52,7 @@ export default function Appointments({ clinic, initialForm }) {
   const [lumiLoading, setLumiLoading]   = useState(false)
   const [lumiPet, setLumiPet]           = useState(null)
   const [form, setForm]                 = useState(initialForm || emptyForm())
+  const [timeError, setTimeError]       = useState('')
 
   useEffect(() => { fetchAppointments() }, [selectedDate])
   useEffect(() => { fetchServices() }, [])
@@ -119,6 +148,29 @@ export default function Appointments({ clinic, initialForm }) {
     setForm(f => ({ ...f, bath_extras: newExtras, price: String(basePrice + extrasTotal) }))
   }
 
+  // Cuando cambia la fecha, ajustar hora automáticamente si es necesario
+  const handleDateChange = (newDate) => {
+    setTimeError('')
+    const available = getAvailableHours(newDate)
+    // Si la hora actual del form ya no está disponible, tomar la primera disponible
+    const timeStillValid = available.includes(form.time)
+    setForm(f => ({
+      ...f,
+      date: newDate,
+      time: timeStillValid ? f.time : (available[0] || '09:00'),
+    }))
+  }
+
+  // Cuando cambia la hora, validar
+  const handleTimeChange = (newTime) => {
+    setTimeError('')
+    const available = getAvailableHours(form.date)
+    if (form.date === localToday() && !available.includes(newTime)) {
+      setTimeError('Esta hora ya pasó. Selecciona un horario futuro.')
+    }
+    setForm(f => ({ ...f, time: newTime }))
+  }
+
   const selectedService = services.find(s => s.id === form.service_id)
   const isBath = selectedService?.is_bath_service
 
@@ -130,6 +182,14 @@ export default function Appointments({ clinic, initialForm }) {
 
   const saveAppointment = async () => {
     if (!form.pet_name.trim() || !form.owner_name.trim()) return
+    // Validación final de hora — por si acaso
+    if (form.date === localToday()) {
+      const available = getAvailableHours(form.date)
+      if (!available.includes(form.time)) {
+        setTimeError('Esta hora ya pasó. Por favor selecciona un horario futuro.')
+        return
+      }
+    }
     const { error } = await supabase.from('vet_appointments').insert({
       clinic_id:    clinic.id,
       date:         form.date,
@@ -149,6 +209,7 @@ export default function Appointments({ clinic, initialForm }) {
       setShowModal(false)
       setForm(emptyForm())
       setLumiPet(null)
+      setTimeError('')
     }
   }
 
@@ -169,13 +230,15 @@ export default function Appointments({ clinic, initialForm }) {
     setSelectedDate(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Cancun' }).format(d))
   }
 
+  const availableHours = getAvailableHours(form.date)
+
   const BATH_LABELS = {
     small:  { label:'Chico',   icon:'🐕', desc: selectedService ? `hasta ${selectedService.small_max_kg} kg`  : '' },
     medium: { label:'Mediano', icon:'🐕', desc: selectedService ? `hasta ${selectedService.medium_max_kg} kg` : '' },
     large:  { label:'Grande',  icon:'🐕', desc: selectedService ? `hasta ${selectedService.large_max_kg} kg`  : '' },
   }
 
-  const canSave = form.pet_name.trim() && form.owner_name.trim()
+  const canSave = form.pet_name.trim() && form.owner_name.trim() && !timeError && availableHours.includes(form.time)
 
   return (
     <div>
@@ -184,7 +247,7 @@ export default function Appointments({ clinic, initialForm }) {
           <p style={{ fontSize:11, fontWeight:700, color:'var(--text-muted)', letterSpacing:'1.5px', textTransform:'uppercase', margin:'0 0 4px' }}>Gestión</p>
           <p style={{ fontSize:24, fontWeight:700, color:'var(--purple-dark)', margin:0, letterSpacing:'-0.3px' }}>Agenda</p>
         </div>
-        <button className="btn btn-primary" onClick={() => { setForm(emptyForm()); setLumiPet(null); setShowModal(true) }}>
+        <button className="btn btn-primary" onClick={() => { setForm(emptyForm()); setLumiPet(null); setTimeError(''); setShowModal(true) }}>
           <i className="ti ti-plus" /> Nueva cita
         </button>
       </div>
@@ -295,13 +358,35 @@ export default function Appointments({ clinic, initialForm }) {
               <div className="grid-2">
                 <div>
                   <label className="label">Fecha *</label>
-                  <input className="input" type="date" value={form.date} onChange={e => setForm(f=>({...f,date:e.target.value}))} />
+                  <input
+                    className="input"
+                    type="date"
+                    value={form.date}
+                    min={localToday()}
+                    onChange={e => handleDateChange(e.target.value)}
+                  />
                 </div>
                 <div>
                   <label className="label">Hora *</label>
-                  <select className="input" value={form.time} onChange={e => setForm(f=>({...f,time:e.target.value}))}>
-                    {HOURS.map(h => <option key={h} value={h}>{h}</option>)}
-                  </select>
+                  {availableHours.length === 0 ? (
+                    <div style={{ padding:'10px 12px', background:'#FEF3C7', border:'1px solid #FDE68A', borderRadius:10, fontSize:13, color:'#92400E', fontWeight:600 }}>
+                      Sin horarios disponibles hoy
+                    </div>
+                  ) : (
+                    <select
+                      className="input"
+                      value={form.time}
+                      onChange={e => handleTimeChange(e.target.value)}
+                      style={{ borderColor: timeError ? '#FCA5A5' : undefined }}
+                    >
+                      {availableHours.map(h => <option key={h} value={h}>{h}</option>)}
+                    </select>
+                  )}
+                  {timeError && (
+                    <p style={{ fontSize:11, color:'#DC2626', margin:'4px 0 0', fontWeight:600 }}>
+                      ⚠ {timeError}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -328,21 +413,18 @@ export default function Appointments({ clinic, initialForm }) {
               {isBath && (
                 <div style={{ background:'var(--purple-lighter, #F5F3FF)', borderRadius:14, padding:14, display:'flex', flexDirection:'column', gap:12 }}>
                   <p style={{ fontSize:12, fontWeight:700, color:'var(--purple)', textTransform:'uppercase', letterSpacing:'0.5px', margin:0 }}>🛁 Configuración del baño</p>
-
                   {form.bath_size && (
                     <div style={{ background:'var(--purple)', borderRadius:10, padding:'8px 14px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                       <span style={{ fontSize:13, color:'rgba(255,255,255,0.8)', fontWeight:600 }}>Total estimado</span>
                       <span style={{ fontSize:18, fontWeight:900, color:'white' }}>${form.price || '0'}</span>
                     </div>
                   )}
-
                   {lumiPet?.weight && (
                     <p style={{ fontSize:12, color:'var(--text-secondary)', margin:0 }}>
                       Peso de {lumiPet.name}: <strong>{lumiPet.weight} kg</strong>
                       {form.bath_size && <span style={{ marginLeft:8, color:'var(--purple)', fontWeight:700 }}>→ Talla: {BATH_LABELS[form.bath_size]?.label}</span>}
                     </p>
                   )}
-
                   <div>
                     <label className="label">Talla</label>
                     <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
@@ -362,7 +444,6 @@ export default function Appointments({ clinic, initialForm }) {
                       })}
                     </div>
                   </div>
-
                   {bathExtrasAvailable.length > 0 && (
                     <div>
                       <label className="label">Extras</label>
@@ -407,10 +488,10 @@ export default function Appointments({ clinic, initialForm }) {
                 </div>
               </div>
 
-              {!canSave && <p style={{ fontSize:12, color:'#DC2626', margin:0 }}>* Nombre de mascota y dueño son obligatorios</p>}
+              {!canSave && !timeError && <p style={{ fontSize:12, color:'#DC2626', margin:0 }}>* Nombre de mascota y dueño son obligatorios</p>}
 
               <div style={{ display:'flex', gap:10 }}>
-                <button className="btn btn-secondary" onClick={() => setShowModal(false)} style={{ flex:1, justifyContent:'center' }}>Cancelar</button>
+                <button className="btn btn-secondary" onClick={() => { setShowModal(false); setTimeError('') }} style={{ flex:1, justifyContent:'center' }}>Cancelar</button>
                 <button className="btn btn-primary" onClick={saveAppointment} disabled={!canSave} style={{ flex:2, justifyContent:'center', opacity: canSave?1:0.5 }}>
                   Guardar cita
                 </button>
