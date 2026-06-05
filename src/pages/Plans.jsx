@@ -1,15 +1,13 @@
 import React from 'react'
 import { PLANS_DEF } from '../App'
 
-const PLAN_ORDER = ['basic', 'basic_bot', 'pro', 'plus', 'plus_bot']
-
 const CHECK = ({ ok }) => (
   <span style={{ fontSize:14, fontWeight:700, color: ok ? '#16A34A' : '#D1D5DB' }}>
     {ok ? '✓' : '—'}
   </span>
 )
 
-export default function Plans({ currentPlan, clinic }) {
+export default function Plans({ currentPlan, clinic, onNavigate }) {
   const formatPrice = (n) => `$${n.toLocaleString('es-MX')}/mes`
 
   return (
@@ -27,11 +25,11 @@ export default function Plans({ currentPlan, clinic }) {
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:16, marginBottom:32 }}>
         {['basic','pro','plus'].map(planId => {
           const p = PLANS_DEF[planId]
-          const isCurrent = currentPlan === planId
+          const isCurrent    = currentPlan === planId
           const isRecommended = planId === 'pro'
           return (
             <div key={planId} style={{
-              borderRadius:18, border:`2px solid ${isCurrent?p.color:isRecommended?p.color:'var(--border)'}`,
+              borderRadius:18, border:`2px solid ${isCurrent ? p.color : isRecommended ? p.color : 'var(--border)'}`,
               background: isCurrent ? `${p.color}08` : 'white',
               padding:24, position:'relative', overflow:'hidden',
             }}>
@@ -52,13 +50,7 @@ export default function Plans({ currentPlan, clinic }) {
                 <p style={{ fontSize:28, fontWeight:900, color:'var(--text-primary)', margin:0 }}>
                   {formatPrice(p.price)}
                 </p>
-                {p.setupFee && (
-                  <p style={{ fontSize:11, color:'var(--text-muted)', margin:'4px 0 0' }}>
-                    + ${p.setupFee.toLocaleString('es-MX')} setup único
-                  </p>
-                )}
               </div>
-
               <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:16 }}>
                 {p.features.map((f,i) => (
                   <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:8 }}>
@@ -73,15 +65,16 @@ export default function Plans({ currentPlan, clinic }) {
                   </div>
                 ))}
               </div>
-
               {!isCurrent ? (
-                <button style={{
-                  width:'100%', padding:'12px', borderRadius:12, border:'none',
-                  background: isRecommended ? `linear-gradient(135deg,${p.color},#C026D3)` : `${p.color}15`,
-                  color: isRecommended ? 'white' : p.color,
-                  fontSize:13, fontWeight:800, cursor:'pointer',
-                }}>
-                  {currentPlan === 'basic' || currentPlan === 'basic_bot' ? 'Actualizar a ' : 'Cambiar a '}{p.label}
+                <button
+                  onClick={() => onNavigate && onNavigate('soporte')}
+                  style={{
+                    width:'100%', padding:'12px', borderRadius:12, border:'none',
+                    background: isRecommended ? `linear-gradient(135deg,${p.color},#C026D3)` : `${p.color}15`,
+                    color: isRecommended ? 'white' : p.color,
+                    fontSize:13, fontWeight:800, cursor:'pointer',
+                  }}>
+                  Solicitar cambio a {p.label}
                 </button>
               ) : (
                 <div style={{ padding:'10px', borderRadius:12, background:'#DCFCE7', textAlign:'center', fontSize:13, fontWeight:700, color:'#16A34A' }}>
@@ -91,6 +84,21 @@ export default function Plans({ currentPlan, clinic }) {
             </div>
           )
         })}
+      </div>
+
+      {/* Nota cambio de plan — solo Soporte interno, sin correo */}
+      <div style={{ background:'#F5F3FF', border:'1px solid #DDD6FE', borderRadius:14, padding:'14px 18px', marginBottom:24, display:'flex', alignItems:'center', gap:14 }}>
+        <i className="ti ti-message-circle" style={{ fontSize:22, color:'var(--purple)', flexShrink:0 }} />
+        <div style={{ flex:1 }}>
+          <p style={{ fontSize:13, fontWeight:700, color:'var(--purple)', margin:'0 0 2px' }}>¿Quieres cambiar de plan?</p>
+          <p style={{ fontSize:12, color:'var(--text-secondary)', margin:0 }}>Escríbenos desde Soporte Lumi y te ayudamos a migrar sin perder tus datos.</p>
+        </div>
+        <button
+          onClick={() => onNavigate && onNavigate('soporte')}
+          style={{ background:'var(--purple)', border:'none', borderRadius:10, padding:'10px 16px', color:'white', fontSize:13, fontWeight:800, cursor:'pointer', flexShrink:0, display:'flex', alignItems:'center', gap:6 }}>
+          <i className="ti ti-send" style={{ fontSize:14 }} />
+          Ir a Soporte
+        </button>
       </div>
 
       {/* Add-ons con Bot */}
@@ -104,7 +112,7 @@ export default function Plans({ currentPlan, clinic }) {
             const p = PLANS_DEF[planId]
             const isCurrent = currentPlan === planId
             return (
-              <div key={planId} style={{ borderRadius:14, border:`2px solid ${isCurrent?'#16A34A':p.color+'40'}`, padding:18, background: isCurrent?'#F0FDF4':'white' }}>
+              <div key={planId} style={{ borderRadius:14, border:`2px solid ${isCurrent ? '#16A34A' : p.color+'40'}`, padding:18, background: isCurrent ? '#F0FDF4' : 'white' }}>
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
                   <div>
                     <p style={{ fontSize:15, fontWeight:800, color:p.color, margin:'0 0 2px' }}>{p.label}</p>
@@ -113,9 +121,7 @@ export default function Plans({ currentPlan, clinic }) {
                   {isCurrent && <span style={{ fontSize:10, fontWeight:800, background:'#DCFCE7', color:'#16A34A', borderRadius:10, padding:'2px 8px' }}>ACTIVO</span>}
                 </div>
                 <p style={{ fontSize:22, fontWeight:900, color:'var(--text-primary)', margin:'0 0 4px' }}>{formatPrice(p.price)}</p>
-                <p style={{ fontSize:11, color:'var(--text-muted)', margin:'0 0 14px' }}>
-                  + $1,500 setup único de personalización
-                </p>
+                <p style={{ fontSize:11, color:'var(--text-muted)', margin:'0 0 14px' }}>+ $1,500 setup único de personalización</p>
                 <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom:14 }}>
                   {p.features.slice(0,4).map((f,i) => (
                     <div key={i} style={{ display:'flex', gap:8 }}>
@@ -125,8 +131,10 @@ export default function Plans({ currentPlan, clinic }) {
                   ))}
                 </div>
                 {!isCurrent && (
-                  <button style={{ width:'100%', padding:'10px', borderRadius:10, border:`1.5px solid ${p.color}`, background:'white', color:p.color, fontSize:12, fontWeight:800, cursor:'pointer' }}>
-                    Agregar Bot IA
+                  <button
+                    onClick={() => onNavigate && onNavigate('soporte')}
+                    style={{ width:'100%', padding:'10px', borderRadius:10, border:`1.5px solid ${p.color}`, background:'white', color:p.color, fontSize:12, fontWeight:800, cursor:'pointer' }}>
+                    Solicitar Bot IA
                   </button>
                 )}
               </div>
@@ -148,15 +156,9 @@ export default function Plans({ currentPlan, clinic }) {
                   const isCurrent = currentPlan === planId
                   return (
                     <th key={planId} style={{ textAlign:'center', padding:'10px 12px', borderBottom:'2px solid var(--border)', minWidth:90 }}>
-                      <p style={{ fontSize:12, fontWeight:800, color: isCurrent ? p.color : 'var(--text-primary)', margin:'0 0 2px' }}>
-                        {p.label} {p.emoji}
-                      </p>
-                      <p style={{ fontSize:11, color:'var(--text-muted)', margin:0, fontWeight:600 }}>
-                        ${p.price}/mes
-                      </p>
-                      {isCurrent && (
-                        <span style={{ fontSize:9, background:'#DCFCE7', color:'#16A34A', borderRadius:8, padding:'1px 6px', fontWeight:800 }}>ACTIVO</span>
-                      )}
+                      <p style={{ fontSize:12, fontWeight:800, color: isCurrent ? p.color : 'var(--text-primary)', margin:'0 0 2px' }}>{p.label} {p.emoji}</p>
+                      <p style={{ fontSize:11, color:'var(--text-muted)', margin:0, fontWeight:600 }}>${p.price}/mes</p>
+                      {isCurrent && <span style={{ fontSize:9, background:'#DCFCE7', color:'#16A34A', borderRadius:8, padding:'1px 6px', fontWeight:800 }}>ACTIVO</span>}
                     </th>
                   )
                 })}
@@ -204,11 +206,9 @@ export default function Plans({ currentPlan, clinic }) {
                     <td style={{ padding:'10px 12px', color:'var(--text-primary)', fontWeight:500 }}>{row.label}</td>
                     {row.vals.map((v, j) => (
                       <td key={j} style={{ textAlign:'center', padding:'10px 12px' }}>
-                        {typeof v === 'string' ? (
-                          <span style={{ fontSize:13, fontWeight:700, color:'var(--purple)' }}>{v}/sem</span>
-                        ) : (
-                          <CHECK ok={v === 1} />
-                        )}
+                        {typeof v === 'string'
+                          ? <span style={{ fontSize:13, fontWeight:700, color:'var(--purple)' }}>{v}/sem</span>
+                          : <CHECK ok={v === 1} />}
                       </td>
                     ))}
                   </tr>
@@ -219,15 +219,18 @@ export default function Plans({ currentPlan, clinic }) {
         </div>
       </div>
 
-      {/* Footer contacto */}
-      <div style={{ marginTop:24, padding:'20px 24px', background:'linear-gradient(135deg,#1A0A2E,#3B0764)', borderRadius:18, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+      {/* Footer — solo Soporte, sin correo */}
+      <div style={{ marginTop:24, padding:'20px 24px', background:'linear-gradient(135deg,#1A0A2E,#3B0764)', borderRadius:18, display:'flex', alignItems:'center', justifyContent:'space-between', gap:16 }}>
         <div>
-          <p style={{ fontSize:15, fontWeight:800, color:'white', margin:'0 0 4px' }}>¿Quieres cambiar de plan?</p>
-          <p style={{ fontSize:13, color:'rgba(255,255,255,0.6)', margin:0 }}>Contáctanos y te ayudamos a migrar sin perder tus datos</p>
+          <p style={{ fontSize:15, fontWeight:800, color:'white', margin:'0 0 4px' }}>¿Tienes dudas sobre los planes?</p>
+          <p style={{ fontSize:13, color:'rgba(255,255,255,0.6)', margin:0 }}>Escríbenos directamente desde Soporte Lumi y te respondemos a la brevedad.</p>
         </div>
-        <a href="mailto:hola@getlumi.mx" style={{ background:'white', borderRadius:12, padding:'12px 20px', fontSize:13, fontWeight:800, color:'#6B21A8', textDecoration:'none', flexShrink:0 }}>
-          hola@getlumi.mx
-        </a>
+        <button
+          onClick={() => onNavigate && onNavigate('soporte')}
+          style={{ background:'white', borderRadius:12, padding:'12px 20px', fontSize:13, fontWeight:800, color:'#6B21A8', border:'none', cursor:'pointer', flexShrink:0, display:'flex', alignItems:'center', gap:8 }}>
+          <i className="ti ti-message-circle" style={{ fontSize:16 }} />
+          Abrir Soporte
+        </button>
       </div>
     </div>
   )
