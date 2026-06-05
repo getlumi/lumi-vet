@@ -10,16 +10,145 @@ import Services from './pages/Services'
 import ChatVet from './pages/ChatVet'
 import Settings from './pages/Settings'
 import OnboardingVet from './pages/OnboardingVet'
+import Plans from './pages/Plans'
 
+// ─── DEFINICIÓN OFICIAL DE PLANES ────────────────────────────────────────────
+export const PLANS_DEF = {
+  basic: {
+    id: 'basic',
+    label: 'Básico',
+    emoji: '',
+    price: 299,
+    color: '#6B7280',
+    description: 'Forma parte de Lumi',
+    features: [
+      'Perfil verificado en mapa Lumi ✦',
+      'Aparecer en búsquedas cercanas',
+      'Agenda — solo pacientes Lumi',
+      'Registro de visita walk-in Lumi',
+      'Historial clínico de pacientes Lumi',
+      'Historial visible en Lumi App',
+      'Actualizar carnet con código',
+      'Certificado de salud oficial + PDF',
+      'Recibir solicitudes de cita',
+      '2 anuncios/semana en Lumi App',
+    ],
+    notIncluded: [
+      'Pacientes regulares (sin Lumi)',
+      'Inventario de productos',
+      'Servicios configurables',
+      'Finanzas y cortes',
+      'Reportes',
+    ],
+  },
+  basic_bot: {
+    id: 'basic_bot',
+    label: 'Básico + Bot',
+    emoji: '🤖',
+    price: 699,
+    color: '#0EA5E9',
+    description: 'Automatiza tu agenda con IA',
+    setupFee: 1500,
+    features: [
+      'Todo lo del plan Básico',
+      'Chatbot WhatsApp con IA personalizado',
+      'Agenda sincronizada con el bot',
+      'El bot agenda, confirma y recuerda citas',
+      'Métricas de funcionamiento del bot',
+      '4 anuncios/semana en Lumi App',
+    ],
+    notIncluded: [
+      'Pacientes regulares (sin Lumi)',
+      'Inventario de productos',
+      'Finanzas y cortes',
+    ],
+  },
+  pro: {
+    id: 'pro',
+    label: 'Pro',
+    emoji: '⭐',
+    price: 599,
+    color: '#6B21A8',
+    description: 'Gestiona tu clínica completa',
+    recommended: true,
+    features: [
+      'Todo lo del plan Básico',
+      'Pacientes regulares (sin cuenta Lumi)',
+      'Historial clínico SOAP completo',
+      'Agenda completa con servicios y precios',
+      'Servicios configurables con extras',
+      'Inventario con control de stock',
+      'Venta rápida desde Dashboard',
+      'Chat con clientes en tiempo real',
+      'Reportes semanales',
+      '4 anuncios/semana + otras secciones Lumi App',
+    ],
+    notIncluded: [
+      'Finanzas avanzadas y cortes',
+      'Chatbot WhatsApp IA',
+    ],
+  },
+  plus: {
+    id: 'plus',
+    label: 'Plus',
+    emoji: '💎',
+    price: 999,
+    color: '#C026D3',
+    description: 'El sistema más completo',
+    features: [
+      'Todo lo del plan Pro',
+      'Panel Admin Global',
+      'Finanzas — ingresos, cortes diarios y anuales',
+      'Inventario avanzado con alertas de reorden',
+      'Reportes mensuales y anuales',
+      'Métricas avanzadas de operación',
+      '8 anuncios/semana + secciones premium',
+      'Presencia máxima en Lumi App',
+      'Soporte prioritario Lumi',
+    ],
+    notIncluded: [
+      'Chatbot WhatsApp IA (disponible como add-on)',
+    ],
+  },
+  plus_bot: {
+    id: 'plus_bot',
+    label: 'Plus + Bot',
+    emoji: '💎🤖',
+    price: 1499,
+    color: '#C026D3',
+    description: 'El más completo con IA',
+    setupFee: 1500,
+    features: [
+      'Todo lo del plan Plus',
+      'Chatbot WhatsApp con IA personalizado',
+      'Agenda sincronizada con el bot',
+      'El bot agenda, confirma y recuerda citas',
+      'Métricas avanzadas del bot',
+    ],
+    notIncluded: [],
+  },
+}
+
+// Qué secciones ve cada plan
 const NAV = [
-  { id: 'dashboard',    icon: 'ti-layout-dashboard', label: 'Dashboard',    plans: ['basic','pro','plus'] },
-  { id: 'appointments', icon: 'ti-calendar',          label: 'Agenda',       plans: ['basic','pro','plus'] },
-  { id: 'patients',     icon: 'ti-paw',               label: 'Pacientes',    plans: ['pro','plus'] },
-  { id: 'services',     icon: 'ti-stethoscope',       label: 'Servicios',    plans: ['pro','plus'] },
-  { id: 'inventory',    icon: 'ti-package',            label: 'Inventario',   plans: ['pro','plus'] },
-
-  { id: 'settings',     icon: 'ti-settings',           label: 'Ajustes',      plans: ['basic','pro','plus'] },
+  { id: 'dashboard',    icon: 'ti-layout-dashboard', label: 'Dashboard',  plans: ['basic','basic_bot','pro','plus','plus_bot'] },
+  { id: 'appointments', icon: 'ti-calendar',          label: 'Agenda',     plans: ['basic','basic_bot','pro','plus','plus_bot'] },
+  { id: 'patients',     icon: 'ti-paw',               label: 'Pacientes',  plans: ['basic','basic_bot','pro','plus','plus_bot'] },
+  { id: 'services',     icon: 'ti-stethoscope',       label: 'Servicios',  plans: ['pro','plus','plus_bot'] },
+  { id: 'inventory',    icon: 'ti-package',            label: 'Inventario', plans: ['pro','plus','plus_bot'] },
+  { id: 'settings',     icon: 'ti-settings',           label: 'Ajustes',    plans: ['basic','basic_bot','pro','plus','plus_bot'] },
 ]
+
+// Qué puede hacer cada plan dentro de Pacientes
+export const planCan = (plan) => ({
+  seeRegularPatients: ['pro','plus','plus_bot'].includes(plan),
+  seeInventory:       ['pro','plus','plus_bot'].includes(plan),
+  seeServices:        ['pro','plus','plus_bot'].includes(plan),
+  seeFinances:        ['plus','plus_bot'].includes(plan),
+  seeAdminGlobal:     ['plus','plus_bot'].includes(plan),
+  seeChat:            ['pro','plus','plus_bot'].includes(plan),
+  hasBot:             ['basic_bot','plus_bot'].includes(plan),
+})
 
 export default function App() {
   const [session, setSession]       = useState(null)
@@ -68,7 +197,9 @@ export default function App() {
   if (!session) return <AuthPage onAuth={() => {}} />
   if (!clinic)  return <OnboardingVet session={session} onComplete={c => setClinic(c)} />
 
-  const plan = clinic.plan || 'basic'
+  const plan    = clinic.plan || 'basic'
+  const can     = planCan(plan)
+  const planDef = PLANS_DEF[plan] || PLANS_DEF.basic
   const allowedNav = NAV.filter(n => n.plans.includes(plan))
 
   const renderPage = () => {
@@ -82,16 +213,32 @@ export default function App() {
           <Patients
             clinic={clinic}
             session={session}
+            plan={plan}
+            can={can}
             openNew={pageParams === 'new'}
             onNavigateAppointment={(form) => navigate('appointments', { appointmentForm: form })}
           />
         )
-      case 'services':     return <Services     clinic={clinic} session={session} />
-      case 'inventory':    return <Inventory    clinic={clinic} session={session} />
-      case 'chat':         return <ChatVet      clinic={clinic} session={session} />
-      case 'settings':     return <Settings     clinic={clinic} session={session} onUpdate={setClinic} />
-      case 'admin':        return <AdminGlobal  clinic={clinic} session={session} />
-      default:             return <Dashboard    clinic={clinic} session={session} onNavigate={navigate} />
+      case 'services':
+        return can.seeServices
+          ? <Services clinic={clinic} session={session} />
+          : <UpgradePrompt section="Servicios" plan={plan} onPlans={() => navigate('plans')} />
+      case 'inventory':
+        return can.seeInventory
+          ? <Inventory clinic={clinic} session={session} />
+          : <UpgradePrompt section="Inventario" plan={plan} onPlans={() => navigate('plans')} />
+      case 'chat':
+        return can.seeChat
+          ? <ChatVet clinic={clinic} session={session} />
+          : <UpgradePrompt section="Chat con clientes" plan={plan} onPlans={() => navigate('plans')} />
+      case 'settings':
+        return <Settings clinic={clinic} session={session} onUpdate={setClinic} onPlans={() => navigate('plans')} />
+      case 'admin':
+        return <AdminGlobal clinic={clinic} session={session} />
+      case 'plans':
+        return <Plans currentPlan={plan} clinic={clinic} />
+      default:
+        return <Dashboard clinic={clinic} session={session} onNavigate={navigate} />
     }
   }
 
@@ -107,7 +254,7 @@ export default function App() {
             <div>
               <p style={{ fontSize:13, fontWeight:800, color:'rgba(255,255,255,0.9)', margin:0, letterSpacing:'-0.3px' }}>Lumi Vet</p>
               <p style={{ fontSize:10, color:'rgba(255,255,255,0.35)', margin:0, fontWeight:500 }}>
-                {plan === 'basic' ? 'Plan Básico' : plan === 'pro' ? 'Plan Pro ⭐' : 'Plan Plus 💎'}
+                {planDef.label} {planDef.emoji}
               </p>
             </div>
           </div>
@@ -135,7 +282,7 @@ export default function App() {
           ))}
         </nav>
 
-        {/* Admin Global — visible si is_admin = true */}
+        {/* Admin Global — solo is_admin */}
         {Boolean(clinic?.is_admin) && (
           <div style={{ padding:'0 8px 8px' }}>
             <button
@@ -149,7 +296,19 @@ export default function App() {
           </div>
         )}
 
-        <div style={{ padding:'12px 8px', borderTop:'1px solid var(--border)' }}>
+        {/* Ver planes — siempre visible */}
+        <div style={{ padding:'0 8px 4px' }}>
+          <button
+            className={`nav-item ${page === 'plans' ? 'active' : ''}`}
+            onClick={() => navigate('plans')}
+            style={{ color:'rgba(255,255,255,0.5)', fontSize:12 }}
+          >
+            <i className="ti ti-rocket" />
+            Ver planes
+          </button>
+        </div>
+
+        <div style={{ padding:'8px 8px 12px', borderTop:'1px solid var(--border)' }}>
           <button className="nav-item" onClick={() => supabase.auth.signOut()} style={{ color:'var(--red)' }}>
             <i className="ti ti-logout" />
             Cerrar sesión
@@ -160,6 +319,31 @@ export default function App() {
       <main className="main-content">
         {renderPage()}
       </main>
+    </div>
+  )
+}
+
+// ─── UPGRADE PROMPT ───────────────────────────────────────────────────────────
+function UpgradePrompt({ section, plan, onPlans }) {
+  const nextPlan = ['basic','basic_bot'].includes(plan) ? 'Pro ⭐ ($599/mes)' : 'Plus 💎 ($999/mes)'
+  return (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:'60vh' }}>
+      <div style={{ textAlign:'center', maxWidth:400, padding:32 }}>
+        <div style={{ width:64, height:64, borderRadius:18, background:'linear-gradient(135deg,#6B21A8,#C026D3)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 20px' }}>
+          <i className="ti ti-lock" style={{ fontSize:28, color:'white' }} />
+        </div>
+        <p style={{ fontSize:20, fontWeight:800, color:'var(--purple-dark)', margin:'0 0 10px' }}>
+          {section} no está incluido
+        </p>
+        <p style={{ fontSize:14, color:'var(--text-secondary)', margin:'0 0 24px', lineHeight:1.6 }}>
+          Esta función está disponible en el plan <strong>{nextPlan}</strong>. Actualiza para acceder a {section.toLowerCase()} y más herramientas para tu clínica.
+        </p>
+        <button onClick={onPlans}
+          style={{ background:'linear-gradient(135deg,#6B21A8,#C026D3)', border:'none', borderRadius:14, padding:'14px 28px', color:'white', fontSize:14, fontWeight:800, cursor:'pointer', boxShadow:'0 4px 20px rgba(107,33,168,0.35)' }}>
+          <i className="ti ti-rocket" style={{ marginRight:8 }} />
+          Ver planes y actualizar
+        </button>
+      </div>
     </div>
   )
 }
