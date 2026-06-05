@@ -11,16 +11,13 @@ import ChatVet from './pages/ChatVet'
 import Settings from './pages/Settings'
 import OnboardingVet from './pages/OnboardingVet'
 import Plans from './pages/Plans'
+import SupportVet from './pages/SupportVet'
 
 // ─── DEFINICIÓN OFICIAL DE PLANES ────────────────────────────────────────────
 export const PLANS_DEF = {
   basic: {
-    id: 'basic',
-    label: 'Básico',
-    emoji: '',
-    price: 299,
-    color: '#6B7280',
-    description: 'Forma parte de Lumi',
+    id: 'basic', label: 'Básico', emoji: '', price: 299,
+    color: '#6B7280', description: 'Forma parte de Lumi',
     features: [
       'Perfil verificado en mapa Lumi ✦',
       'Aparecer en búsquedas cercanas',
@@ -42,12 +39,8 @@ export const PLANS_DEF = {
     ],
   },
   basic_bot: {
-    id: 'basic_bot',
-    label: 'Básico + Bot',
-    emoji: '🤖',
-    price: 699,
-    color: '#0EA5E9',
-    description: 'Automatiza tu agenda con IA',
+    id: 'basic_bot', label: 'Básico + Bot', emoji: '🤖', price: 699,
+    color: '#0EA5E9', description: 'Automatiza tu agenda con IA',
     setupFee: 1500,
     features: [
       'Todo lo del plan Básico',
@@ -64,12 +57,8 @@ export const PLANS_DEF = {
     ],
   },
   pro: {
-    id: 'pro',
-    label: 'Pro',
-    emoji: '⭐',
-    price: 599,
-    color: '#6B21A8',
-    description: 'Gestiona tu clínica completa',
+    id: 'pro', label: 'Pro', emoji: '⭐', price: 599,
+    color: '#6B21A8', description: 'Gestiona tu clínica completa',
     recommended: true,
     features: [
       'Todo lo del plan Básico',
@@ -89,12 +78,8 @@ export const PLANS_DEF = {
     ],
   },
   plus: {
-    id: 'plus',
-    label: 'Plus',
-    emoji: '💎',
-    price: 999,
-    color: '#C026D3',
-    description: 'El sistema más completo',
+    id: 'plus', label: 'Plus', emoji: '💎', price: 999,
+    color: '#C026D3', description: 'El sistema más completo',
     features: [
       'Todo lo del plan Pro',
       'Panel Admin Global',
@@ -106,17 +91,11 @@ export const PLANS_DEF = {
       'Presencia máxima en Lumi App',
       'Soporte prioritario Lumi',
     ],
-    notIncluded: [
-      'Chatbot WhatsApp IA (disponible como add-on)',
-    ],
+    notIncluded: ['Chatbot WhatsApp IA (disponible como add-on)'],
   },
   plus_bot: {
-    id: 'plus_bot',
-    label: 'Plus + Bot',
-    emoji: '💎🤖',
-    price: 1499,
-    color: '#C026D3',
-    description: 'El más completo con IA',
+    id: 'plus_bot', label: 'Plus + Bot', emoji: '💎🤖', price: 1499,
+    color: '#C026D3', description: 'El más completo con IA',
     setupFee: 1500,
     features: [
       'Todo lo del plan Plus',
@@ -129,7 +108,7 @@ export const PLANS_DEF = {
   },
 }
 
-// Qué secciones ve cada plan
+// ─── NAV POR PLAN ─────────────────────────────────────────────────────────────
 const NAV = [
   { id: 'dashboard',    icon: 'ti-layout-dashboard', label: 'Dashboard',  plans: ['basic','basic_bot','pro','plus','plus_bot'] },
   { id: 'appointments', icon: 'ti-calendar',          label: 'Agenda',     plans: ['basic','basic_bot','pro','plus','plus_bot'] },
@@ -139,7 +118,7 @@ const NAV = [
   { id: 'settings',     icon: 'ti-settings',           label: 'Ajustes',    plans: ['basic','basic_bot','pro','plus','plus_bot'] },
 ]
 
-// Qué puede hacer cada plan dentro de Pacientes
+// ─── PERMISOS POR PLAN ────────────────────────────────────────────────────────
 export const planCan = (plan) => ({
   seeRegularPatients: ['pro','plus','plus_bot'].includes(plan),
   seeInventory:       ['pro','plus','plus_bot'].includes(plan),
@@ -156,6 +135,7 @@ export default function App() {
   const [page, setPage]             = useState('dashboard')
   const [pageParams, setPageParams] = useState(null)
   const [loading, setLoading]       = useState(true)
+  const [unreadSupport, setUnreadSupport] = useState(0)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -169,6 +149,37 @@ export default function App() {
       else { setClinic(null); setLoading(false) }
     })
   }, [])
+
+  // Badge de mensajes no leídos del soporte
+  useEffect(() => {
+    if (!clinic) return
+    fetchUnreadSupport()
+    const channel = supabase
+      .channel(`support_badge_${clinic.id}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'vet_support_messages',
+        filter: `clinic_id=eq.${clinic.id}`,
+      }, payload => {
+        if (payload.new.sender === 'admin' && page !== 'soporte') {
+          setUnreadSupport(prev => prev + 1)
+        }
+      })
+      .subscribe()
+    return () => supabase.removeChannel(channel)
+  }, [clinic, page])
+
+  const fetchUnreadSupport = async () => {
+    if (!clinic) return
+    const { count } = await supabase
+      .from('vet_support_messages')
+      .select('*', { count:'exact', head:true })
+      .eq('clinic_id', clinic.id)
+      .eq('sender', 'admin')
+      .eq('read', false)
+    setUnreadSupport(count || 0)
+  }
 
   const fetchClinic = async (userId) => {
     const { data, error } = await supabase
@@ -185,11 +196,13 @@ export default function App() {
   const navigate = (p, params = null) => {
     setPage(p)
     setPageParams(params)
+    if (p === 'soporte') setUnreadSupport(0)
   }
 
   if (loading) return (
     <div style={{ height:'100vh', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:16 }}>
-      <img src="https://yjtjougyjmlyztfwtcdd.supabase.co/storage/v1/object/public/avatars/lumi-logo.png" style={{ width:48, opacity:0.7 }} onError={e => e.target.style.display='none'} />
+      <img src="https://yjtjougyjmlyztfwtcdd.supabase.co/storage/v1/object/public/avatars/lumi-logo.png"
+        style={{ width:48, opacity:0.7 }} onError={e => e.target.style.display='none'} />
       <div style={{ fontSize:14, color:'#6B7280' }}>Cargando Lumi Vet...</div>
     </div>
   )
@@ -236,7 +249,9 @@ export default function App() {
       case 'admin':
         return <AdminGlobal clinic={clinic} session={session} />
       case 'plans':
-        return <Plans currentPlan={plan} clinic={clinic} />
+        return <Plans currentPlan={plan} clinic={clinic} onNavigate={navigate} />
+      case 'soporte':
+        return <SupportVet clinic={clinic} />
       default:
         return <Dashboard clinic={clinic} session={session} onNavigate={navigate} />
     }
@@ -258,7 +273,7 @@ export default function App() {
               </p>
             </div>
           </div>
-          <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 10px', background:'rgba(255,255,255,0.05)', borderRadius:10, border:'1px solid rgba(255,255,255,0.08)' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px', background:'rgba(255,255,255,0.05)', borderRadius:10, border:'1px solid rgba(255,255,255,0.08)' }}>
             {clinic.logo_url ? (
               <img src={clinic.logo_url} alt={clinic.name} style={{ width:32, height:32, borderRadius:8, objectFit:'contain', background:'white', padding:3 }} />
             ) : (
@@ -273,9 +288,12 @@ export default function App() {
           </div>
         </div>
 
+        {/* Nav principal */}
         <nav style={{ flex:1, padding:'12px 8px', overflowY:'auto' }}>
           {allowedNav.map(item => (
-            <button key={item.id} className={`nav-item ${page === item.id ? 'active' : ''}`} onClick={() => navigate(item.id)}>
+            <button key={item.id}
+              className={`nav-item ${page === item.id ? 'active' : ''}`}
+              onClick={() => navigate(item.id)}>
               <i className={`ti ${item.icon}`} />
               {item.label}
             </button>
@@ -284,7 +302,7 @@ export default function App() {
 
         {/* Admin Global — solo is_admin */}
         {Boolean(clinic?.is_admin) && (
-          <div style={{ padding:'0 8px 8px' }}>
+          <div style={{ padding:'0 8px 4px' }}>
             <button
               className={`nav-item ${page === 'admin' ? 'active' : ''}`}
               onClick={() => navigate('admin')}
@@ -296,7 +314,29 @@ export default function App() {
           </div>
         )}
 
-        {/* Ver planes — siempre visible */}
+        {/* Soporte — siempre visible con badge */}
+        <div style={{ padding:'0 8px 4px' }}>
+          <button
+            className={`nav-item ${page === 'soporte' ? 'active' : ''}`}
+            onClick={() => navigate('soporte')}
+            style={{ position:'relative' }}
+          >
+            <i className="ti ti-message-circle" />
+            Soporte Lumi
+            {unreadSupport > 0 && (
+              <span style={{
+                position:'absolute', right:10, top:'50%', transform:'translateY(-50%)',
+                background:'#DC2626', color:'white', borderRadius:'50%',
+                width:18, height:18, display:'flex', alignItems:'center', justifyContent:'center',
+                fontSize:10, fontWeight:800,
+              }}>
+                {unreadSupport > 9 ? '9+' : unreadSupport}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Ver planes */}
         <div style={{ padding:'0 8px 4px' }}>
           <button
             className={`nav-item ${page === 'plans' ? 'active' : ''}`}
@@ -308,6 +348,7 @@ export default function App() {
           </button>
         </div>
 
+        {/* Cerrar sesión */}
         <div style={{ padding:'8px 8px 12px', borderTop:'1px solid var(--border)' }}>
           <button className="nav-item" onClick={() => supabase.auth.signOut()} style={{ color:'var(--red)' }}>
             <i className="ti ti-logout" />
