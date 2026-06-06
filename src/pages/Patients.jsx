@@ -52,6 +52,11 @@ export default function Patients({ clinic, openNew, plan, can, onNavigateAppoint
 
   useEffect(() => { fetchAll() }, [])
 
+  // Plan básico — forzar tab a lumi siempre
+  useEffect(() => {
+    if (!can?.seeRegularPatients) setTab('lumi')
+  }, [can])
+
   const fetchAll = async () => {
     const { data: lumi, error: lumiErr } = await supabase
       .from('vet_patients')
@@ -492,7 +497,7 @@ export default function Patients({ clinic, openNew, plan, can, onNavigateAppoint
       <div>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
           <p style={{ fontSize:20, fontWeight:800, margin:0 }}>Pacientes <span style={{ fontSize:14, color:'var(--text-muted)', fontWeight:500 }}>({allPatients.length})</span></p>
-          <button className="btn btn-primary" onClick={() => setShowNew(true)}><i className="ti ti-plus" /> Nuevo</button>
+          <button className="btn btn-primary" onClick={() => { if (!canSeeRegular) setTab('lumi'); setShowNew(true) }}><i className="ti ti-plus" /> Nuevo</button>
         </div>
 
         {pointsMsg && <div style={{ background:'#DCFCE7', border:'1px solid #16A34A', borderRadius:10, padding:'10px 14px', marginBottom:12, fontSize:13, color:'#15803D', fontWeight:600 }}>{pointsMsg}</div>}
@@ -552,7 +557,7 @@ export default function Patients({ clinic, openNew, plan, can, onNavigateAppoint
             <div style={{ textAlign:'center', padding:'40px 20px', color:'var(--text-muted)' }}>
               <i className="ti ti-paw" style={{ fontSize:36, display:'block', marginBottom:8 }} />
               <p style={{ fontSize:13, margin:'0 0 12px' }}>Sin pacientes</p>
-              <button className="btn btn-primary" onClick={() => setShowNew(true)}>+ Agregar primero</button>
+              <button className="btn btn-primary" onClick={() => { if (!canSeeRegular) setTab('lumi'); setShowNew(true) }}>+ Agregar primero</button>
             </div>
           )}
         </div>
