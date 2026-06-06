@@ -26,7 +26,7 @@ export default function OnboardingVet({ session, onComplete }) {
   const [geoStatus, setGeoStatus] = useState(null) // 'loading' | 'ok' | 'error'
   const [form, setForm]         = useState({
     name:'', address:'', city:'', state:'', phone:'', whatsapp:'',
-    email: session?.user?.email || '',
+    email: session?.user?.email || '', description:'',
   })
 
   const handleSave = async () => {
@@ -50,6 +50,7 @@ export default function OnboardingVet({ session, onComplete }) {
         email:     form.email   || null,
         plan,
         is_active: true,
+        description: form.description || null,
         latitude:  lat,
         longitude: lng,
       }).select().single()
@@ -139,14 +140,15 @@ export default function OnboardingVet({ session, onComplete }) {
                     style={{ borderColor: form.name ? undefined : '#FCA5A5' }} />
                 </div>
 
-                {/* Dirección — ancho completo */}
+                {/* Dirección — obligatoria */}
                 <div style={{ gridColumn:'1/-1' }}>
-                  <label className="label">Dirección completa</label>
+                  <label className="label">Dirección completa *</label>
                   <input className="input" value={form.address}
                     onChange={e => setForm(v=>({...v,address:e.target.value}))}
-                    placeholder="Av. Principal 123, Col. Centro" />
+                    placeholder="Av. Principal 123, Col. Centro"
+                    style={{ borderColor: !form.address.trim() ? '#FCA5A5' : undefined }} />
                   <p style={{ fontSize:11, color:'#6B7280', margin:'4px 0 0' }}>
-                    📍 Usamos tu dirección para mostrarte en el mapa de Lumi App
+                    📍 Necesaria para aparecer en el directorio de Lumi App
                   </p>
                 </div>
 
@@ -185,6 +187,25 @@ export default function OnboardingVet({ session, onComplete }) {
                     onChange={e => setForm(v=>({...v,email:e.target.value}))}
                     placeholder="clinica@email.com" />
                 </div>
+
+                {/* Descripción */}
+                <div style={{ gridColumn:'1/-1' }}>
+                  <label className="label">Descripción de tu clínica</label>
+                  <textarea
+                    value={form.description}
+                    onChange={e => setForm(v=>({...v,description:e.target.value}))}
+                    placeholder="Somos una clínica especializada en perros y gatos, con más de 10 años de experiencia. Ofrecemos consultas, vacunación, baño y grooming..."
+                    rows={3}
+                    style={{
+                      width:'100%', padding:'10px 12px', border:'1px solid #E5E7EB',
+                      borderRadius:10, fontSize:13, fontFamily:'inherit', resize:'vertical',
+                      outline:'none', lineHeight:1.5, color:'#374151', boxSizing:'border-box',
+                    }}
+                  />
+                  <p style={{ fontSize:11, color:'#6B7280', margin:'4px 0 0' }}>
+                    Esta descripción aparecerá en el directorio de Lumi App para que los dueños te conozcan
+                  </p>
+                </div>
               </div>
 
               {/* Status geocodificación */}
@@ -206,8 +227,8 @@ export default function OnboardingVet({ session, onComplete }) {
                   ← Volver
                 </button>
                 <button className="btn btn-primary" onClick={handleSave}
-                  disabled={saving || !form.name || !form.city}
-                  style={{ flex:2, justifyContent:'center', padding:'13px', opacity: (!form.name||!form.city) ? 0.5 : 1 }}>
+                  disabled={saving || !form.name || !form.city || !form.address}
+                  style={{ flex:2, justifyContent:'center', padding:'13px', opacity: (!form.name||!form.city||!form.address) ? 0.5 : 1 }}>
                   {saving ? 'Creando tu perfil...' : 'Entrar al panel ✓'}
                 </button>
               </div>
