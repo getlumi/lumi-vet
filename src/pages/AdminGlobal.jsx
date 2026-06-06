@@ -13,7 +13,6 @@ const PERIODS = [
 ]
 
 const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
-
 const CATEGORY_LABELS = { servicio:'Servicio', producto:'Producto', consulta:'Consulta', vacuna:'Vacuna', baño:'Baño', otro:'Otro' }
 const CATEGORY_COLORS = { servicio:'#7C3AED', producto:'#0EA5E9', consulta:'#16A34A', vacuna:'#F59E0B', baño:'#EC4899', otro:'#6B7280' }
 
@@ -47,15 +46,18 @@ function getDateRange(period, selectedYear) {
 
 const localToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Cancun' }).format(new Date())
 
-export default function AdminGlobal({ clinic }) {
+export default function AdminGlobal({ clinic, plan }) {
   const [period, setPeriod]             = useState('month')
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [transactions, setTransactions] = useState([])
+  const [visits, setVisits]             = useState([])
   const [counts, setCounts]             = useState({ appointments:0, lumiPatients:0, regularPatients:0, inventory:0, services:0 })
   const [loading, setLoading]           = useState(true)
   const [showAdd, setShowAdd]           = useState(false)
   const [saving, setSaving]             = useState(false)
   const [form, setForm] = useState({ category:'servicio', description:'', amount:'', date: localToday() })
+
+  const isBasic = ['basic','basic_bot'].includes(plan || 'basic')
 
   useEffect(() => { fetchAll() }, [period, selectedYear])
 
@@ -63,23 +65,33 @@ export default function AdminGlobal({ clinic }) {
     setLoading(true)
     const { from, to } = getDateRange(period, selectedYear)
 
-    const [txRes, apptRes, lumiRes, regRes, invRes, svcRes] = await Promise.all([
-      supabase.from('vet_transactions').select('*').eq('clinic_id', clinic.id).gte('date', from).lte('date', to).order('date', { ascending: false }),
-      supabase.from('vet_appointments').select('*', { count:'exact', head:true }).eq('clinic_id', clinic.id),
-      supabase.from('vet_patients').select('*', { count:'exact', head:true }).eq('clinic_id', clinic.id),
-      supabase.from('vet_regular_patients').select('*', { count:'exact', head:true }).eq('clinic_id', clinic.id),
-      supabase.from('vet_inventory').select('*', { count:'exact', head:true }).eq('clinic_id', clinic.id),
-      supabase.from('vet_services').select('*', { count:'exact', head:true }).eq('clinic_id', clinic.id),
-    ])
-
-    setTransactions(txRes.data || [])
-    setCounts({
-      appointments:   apptRes.count  || 0,
-      lumiPatients:   lumiRes.count  || 0,
-      regularPatients: regRes.count  || 0,
-      inventory:      invRes.count   || 0,
-      services:       svcRes.count   || 0,
-    })
+    if (isBasic) {
+      // Plan básico — solo pacientes Lumi y visitas
+      const [lumiRes, visitsRes] = await Promise.all([
+        supabase.from('vet_patients').select('*', { count:'exact', head:true }).eq('clinic_id', clinic.id),
+        supabase.from('vet_records').select('id, date, type, description').eq('clinic_id', clinic.id).gte('date', from).lte('date', to).order('date', { ascending: false }),
+      ])
+      setCounts(c => ({ ...c, lumiPatients: lumiRes.count || 0 }))
+      setVisits(visitsRes.data || [])
+    } else {
+      // Plan Pro/Plus — todo completo
+      const [txRes, apptRes, lumiRes, regRes, invRes, svcRes] = await Promise.all([
+        supabase.from('vet_transactions').select('*').eq('clinic_id', clinic.id).gte('date', from).lte('date', to).order('date', { ascending: false }),
+        supabase.from('vet_appointments').select('*', { count:'exact', head:true }).eq('clinic_id', clinic.id),
+        supabase.from('vet_patients').select('*', { count:'exact', head:true }).eq('clinic_id', clinic.id),
+        supabase.from('vet_regular_patients').select('*', { count:'exact', head:true }).eq('clinic_id', clinic.id),
+        supabase.from('vet_inventory').select('*', { count:'exact', head:true }).eq('clinic_id', clinic.id),
+        supabase.from('vet_services').select('*', { count:'exact', head:true }).eq('clinic_id', clinic.id),
+      ])
+      setTransactions(txRes.data || [])
+      setCounts({
+        appointments:    apptRes.count || 0,
+        lumiPatients:    lumiRes.count || 0,
+        regularPatients: regRes.count  || 0,
+        inventory:       invRes.count  || 0,
+        services:        svcRes.count  || 0,
+      })
+    }
     setLoading(false)
   }
 
@@ -101,7 +113,7 @@ export default function AdminGlobal({ clinic }) {
     fetchAll()
   }
 
-  // Métricas financieras
+  // ── Métricas financieras (Pro/Plus) ───────────────────────────────────────
   const income    = transactions.filter(t => t.type === 'income').reduce((s,t) => s + (t.amount||0), 0)
   const incomeSvc = transactions.filter(t => t.type === 'income' && ['servicio','consulta','vacuna','baño'].includes(t.category)).reduce((s,t) => s + (t.amount||0), 0)
   const incomePrd = transactions.filter(t => t.type === 'income' && t.category === 'producto').reduce((s,t) => s + (t.amount||0), 0)
@@ -119,40 +131,53 @@ export default function AdminGlobal({ clinic }) {
   const maxDayAmount = Math.max(...Object.values(byDay), 1)
   const sortedDays   = Object.entries(byDay).sort(([a],[b]) => a.localeCompare(b))
 
-  // Vista anual — agrupar por mes
   const byMonth = Array(12).fill(0)
-  if (period === 'year') {
+  if (period === 'year' && !isBasic) {
     transactions.filter(t => t.type === 'income').forEach(t => {
       const m = new Date(t.date + 'T12:00:00').getMonth()
       byMonth[m] += (t.amount || 0)
     })
   }
 
+  // ── Métricas de visitas (Básico) ──────────────────────────────────────────
+  const visitsByDay = visits.reduce((acc, v) => {
+    acc[v.date] = (acc[v.date] || 0) + 1
+    return acc
+  }, {})
+  const maxVisitDay   = Math.max(...Object.values(visitsByDay), 1)
+  const sortedVisitDays = Object.entries(visitsByDay).sort(([a],[b]) => a.localeCompare(b))
+
+  const visitsByMonth = Array(12).fill(0)
+  if (period === 'year') {
+    visits.forEach(v => {
+      const m = new Date(v.date + 'T12:00:00').getMonth()
+      visitsByMonth[m] += 1
+    })
+  }
+
   const formatMoney = (n) => n.toLocaleString('es-MX', { style:'currency', currency:'MXN', minimumFractionDigits:0 })
   const formatDate  = (d) => new Date(d + 'T12:00:00').toLocaleDateString('es-MX', { day:'numeric', month:'short' })
-
   const years = [2024, 2025, 2026, 2027]
+  const { label: periodLabel } = getDateRange(period, selectedYear)
 
   const exportExcel = () => {
-    const { label } = getDateRange(period, selectedYear)
     const rows = transactions.map(t => ({ Fecha: t.date, Descripcion: t.description||'', Categoria: CATEGORY_LABELS[t.category]||t.category||'', Monto: t.amount }))
-    rows.push({})
-    rows.push({ Fecha:'', Descripcion:'TOTAL INGRESOS', Categoria:'', Monto: income })
+    rows.push({}, { Fecha:'', Descripcion:'TOTAL INGRESOS', Categoria:'', Monto: income })
     const ws = XLSX.utils.json_to_sheet(rows)
     ws['!cols'] = [{ wch:12 },{ wch:30 },{ wch:14 },{ wch:12 }]
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Admin Global')
-    XLSX.writeFile(wb, `Lumi-Admin-${clinic.name}-${label}.xlsx`)
+    XLSX.writeFile(wb, `Lumi-Admin-${clinic.name}-${periodLabel}.xlsx`)
   }
 
   const exportPDF = () => {
-    const { label, from, to } = getDateRange(period, selectedYear)
+    const { from, to } = getDateRange(period, selectedYear)
     const doc = new jsPDF()
     doc.setFontSize(18); doc.setTextColor(107,33,168)
     doc.text('Lumi Vet — Panel Admin', 14, 20)
     doc.setFontSize(11); doc.setTextColor(100)
     doc.text(`${clinic.name} · ${clinic.city||''}`, 14, 28)
-    doc.text(`Período: ${label} (${from} al ${to})`, 14, 35)
+    doc.text(`Período: ${periodLabel} (${from} al ${to})`, 14, 35)
     doc.setFontSize(10); doc.setTextColor(40)
     doc.text(`Ingresos: ${formatMoney(income)}   Servicios: ${formatMoney(incomeSvc)}   Productos: ${formatMoney(incomePrd)}`, 14, 45)
     autoTable(doc, {
@@ -165,12 +190,190 @@ export default function AdminGlobal({ clinic }) {
       foot: [['','','TOTAL',formatMoney(income)]],
       footStyles: { fillColor:[237,233,254], textColor:[107,33,168], fontStyle:'bold' },
     })
-    doc.save(`Lumi-Admin-${clinic.name}-${label}.pdf`)
+    doc.save(`Lumi-Admin-${clinic.name}-${periodLabel}.pdf`)
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // VISTA BÁSICO
+  // ══════════════════════════════════════════════════════════════════════════
+  if (isBasic) return (
+    <div>
+      {/* Header básico */}
+      <div style={{ marginBottom:24 }}>
+        <p style={{ fontSize:11, fontWeight:700, color:'var(--text-muted)', letterSpacing:'1.5px', textTransform:'uppercase', margin:'0 0 4px' }}>Veterinaria</p>
+        <p style={{ fontSize:24, fontWeight:700, color:'var(--purple-dark)', margin:0, letterSpacing:'-0.3px' }}>Mis estadísticas</p>
+      </div>
+
+      {/* Selector período */}
+      <div style={{ display:'flex', gap:8, marginBottom:20, flexWrap:'wrap' }}>
+        {PERIODS.map(p => (
+          <button key={p.id} className={`btn ${period===p.id?'btn-primary':'btn-secondary'} btn-sm`} onClick={() => setPeriod(p.id)}>
+            {p.label}
+          </button>
+        ))}
+        {period === 'year' && (
+          <select className="input" style={{ width:'auto', padding:'6px 12px' }} value={selectedYear} onChange={e => setSelectedYear(parseInt(e.target.value))}>
+            {years.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        )}
+      </div>
+
+      {/* KPIs básico */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:24 }}>
+        <div className="stat-card" style={{ gridColumn:'1 / -1' }}>
+          <div className="stat-icon" style={{ background:'#FCE7F3' }}>
+            <i className="ti ti-paw" style={{ color:'#DB2777', fontSize:24 }} />
+          </div>
+          <div>
+            <p style={{ fontSize:11, color:'var(--text-muted)', margin:'0 0 2px', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.5px' }}>Pacientes Lumi registrados</p>
+            <p style={{ fontSize:32, fontWeight:900, color:'#DB2777', margin:0 }}>{loading ? '—' : counts.lumiPatients}</p>
+            <p style={{ fontSize:12, color:'var(--text-muted)', margin:'4px 0 0' }}>Total histórico en tu clínica</p>
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-icon" style={{ background:'#EDE9FE' }}>
+            <i className="ti ti-stethoscope" style={{ color:'#6B21A8', fontSize:20 }} />
+          </div>
+          <div>
+            <p style={{ fontSize:11, color:'var(--text-muted)', margin:'0 0 2px', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.5px' }}>Visitas — {periodLabel}</p>
+            <p style={{ fontSize:28, fontWeight:900, color:'#6B21A8', margin:0 }}>{loading ? '—' : visits.length}</p>
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-icon" style={{ background:'#DCFCE7' }}>
+            <i className="ti ti-trending-up" style={{ color:'#16A34A', fontSize:20 }} />
+          </div>
+          <div>
+            <p style={{ fontSize:11, color:'var(--text-muted)', margin:'0 0 2px', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.5px' }}>Promedio por día</p>
+            <p style={{ fontSize:28, fontWeight:900, color:'#16A34A', margin:0 }}>
+              {loading ? '—' : sortedVisitDays.length > 0 ? (visits.length / sortedVisitDays.length).toFixed(1) : '0'}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Gráfica de visitas por día */}
+      {period !== 'year' && (
+        <div className="card" style={{ marginBottom:20 }}>
+          <p style={{ fontSize:13, fontWeight:700, color:'var(--text-secondary)', textTransform:'uppercase', letterSpacing:'0.6px', margin:'0 0 16px' }}>
+            Visitas por día — {periodLabel}
+          </p>
+          {sortedVisitDays.length === 0 ? (
+            <p style={{ fontSize:13, color:'var(--text-muted)', textAlign:'center', padding:'20px 0' }}>Sin visitas en este período</p>
+          ) : (
+            <div style={{ display:'flex', alignItems:'flex-end', gap:6, height:120, overflowX:'auto' }}>
+              {sortedVisitDays.slice(-14).map(([date, count]) => (
+                <div key={date} style={{ minWidth:32, display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
+                  <p style={{ fontSize:9, color:'var(--purple)', fontWeight:700, margin:0 }}>{count}</p>
+                  <div style={{ width:'100%', background:'var(--purple-light)', borderRadius:4, height:Math.max(8,(count/maxVisitDay)*90), position:'relative', overflow:'hidden' }}>
+                    <div style={{ position:'absolute', bottom:0, left:0, right:0, background:'linear-gradient(135deg,#6B21A8,#C026D3)', height:'100%', borderRadius:4 }} />
+                  </div>
+                  <p style={{ fontSize:7, color:'var(--text-muted)', margin:0, whiteSpace:'nowrap' }}>{formatDate(date)}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Vista anual — visitas mes a mes */}
+      {period === 'year' && (
+        <div className="card" style={{ marginBottom:20 }}>
+          <p style={{ fontSize:13, fontWeight:700, color:'var(--text-secondary)', textTransform:'uppercase', letterSpacing:'0.6px', margin:'0 0 16px' }}>
+            Visitas por mes — {selectedYear}
+          </p>
+          <table className="table">
+            <thead>
+              <tr><th>Mes</th><th>Visitas</th><th>% del año</th></tr>
+            </thead>
+            <tbody>
+              {MONTHS.map((mes, i) => (
+                <tr key={mes} style={{ opacity: visitsByMonth[i] === 0 ? 0.4 : 1 }}>
+                  <td style={{ fontWeight:600 }}>{mes}</td>
+                  <td style={{ fontWeight:700, color: visitsByMonth[i] > 0 ? '#6B21A8' : 'var(--text-muted)' }}>
+                    {visitsByMonth[i]}
+                  </td>
+                  <td>
+                    {visits.length > 0 ? (
+                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                        <div style={{ flex:1, height:6, background:'var(--border)', borderRadius:3, overflow:'hidden' }}>
+                          <div style={{ height:'100%', width:`${(visitsByMonth[i]/visits.length)*100}%`, background:'linear-gradient(135deg,#6B21A8,#C026D3)', borderRadius:3 }} />
+                        </div>
+                        <span style={{ fontSize:11, color:'var(--text-muted)', minWidth:32 }}>
+                          {visits.length > 0 ? Math.round((visitsByMonth[i]/visits.length)*100) : 0}%
+                        </span>
+                      </div>
+                    ) : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td style={{ fontWeight:800, color:'var(--purple)' }}>Total {selectedYear}</td>
+                <td style={{ fontWeight:900, color:'#6B21A8', fontSize:15 }}>{visits.length} visitas</td>
+                <td style={{ fontWeight:700, color:'var(--text-muted)' }}>100%</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+
+      {/* Historial de visitas */}
+      <div className="card">
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+          <p style={{ fontSize:13, fontWeight:700, color:'var(--text-secondary)', textTransform:'uppercase', letterSpacing:'0.6px', margin:0 }}>Visitas registradas</p>
+          <span className="badge badge-purple">{visits.length} visitas</span>
+        </div>
+        {loading ? (
+          <div style={{ textAlign:'center', padding:32, color:'var(--text-muted)' }}>Cargando...</div>
+        ) : visits.length === 0 ? (
+          <div style={{ textAlign:'center', padding:'32px 20px' }}>
+            <i className="ti ti-stethoscope" style={{ fontSize:36, color:'var(--text-muted)', display:'block', marginBottom:10 }} />
+            <p style={{ fontSize:14, fontWeight:700, margin:0 }}>Sin visitas en este período</p>
+          </div>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr><th>Fecha</th><th>Descripción</th><th>Tipo</th></tr>
+            </thead>
+            <tbody>
+              {visits.slice(0, 50).map(v => (
+                <tr key={v.id}>
+                  <td style={{ fontSize:12, color:'var(--text-muted)', whiteSpace:'nowrap' }}>{formatDate(v.date)}</td>
+                  <td style={{ fontWeight:600 }}>{v.description || 'Consulta'}</td>
+                  <td>
+                    <span className="badge badge-purple" style={{ textTransform:'capitalize', fontSize:10 }}>
+                      {v.type || 'consulta'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Banner upgrade */}
+      <div style={{ marginTop:20, padding:'16px 20px', background:'linear-gradient(135deg,#6B21A8,#C026D3)', borderRadius:16, display:'flex', alignItems:'center', justifyContent:'space-between', gap:16 }}>
+        <div>
+          <p style={{ fontSize:14, fontWeight:800, color:'white', margin:'0 0 4px' }}>¿Quieres ver tus finanzas?</p>
+          <p style={{ fontSize:12, color:'rgba(255,255,255,0.7)', margin:0 }}>Actualiza al plan Pro para acceder a ingresos, cortes y reportes.</p>
+        </div>
+        <span style={{ background:'white', borderRadius:10, padding:'8px 16px', fontSize:12, fontWeight:800, color:'#6B21A8', whiteSpace:'nowrap', flexShrink:0 }}>
+          Plan Pro ⭐ $599/mes
+        </span>
+      </div>
+    </div>
+  )
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // VISTA PRO / PLUS — completa (igual que antes)
+  // ══════════════════════════════════════════════════════════════════════════
   return (
     <div>
-      {/* Header */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 }}>
         <div>
           <p style={{ fontSize:11, fontWeight:700, color:'var(--text-muted)', letterSpacing:'1.5px', textTransform:'uppercase', margin:'0 0 4px' }}>Veterinaria</p>
@@ -183,7 +386,6 @@ export default function AdminGlobal({ clinic }) {
         </div>
       </div>
 
-      {/* Selector período */}
       <div style={{ display:'flex', gap:8, marginBottom:20, alignItems:'center', flexWrap:'wrap' }}>
         {PERIODS.map(p => (
           <button key={p.id} className={`btn ${period===p.id?'btn-primary':'btn-secondary'} btn-sm`} onClick={() => setPeriod(p.id)}>
@@ -197,15 +399,14 @@ export default function AdminGlobal({ clinic }) {
         )}
       </div>
 
-      {/* KPIs — Operación */}
       <p style={{ fontSize:11, fontWeight:700, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'1px', margin:'0 0 12px' }}>Resumen operativo</p>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:12, marginBottom:20 }}>
         {[
-          { label:'Citas',         value: counts.appointments,    icon:'ti-calendar',          color:'#7C3AED', bg:'#EDE9FE' },
-          { label:'Pacientes Lumi', value: counts.lumiPatients,    icon:'ti-paw',               color:'#DB2777', bg:'#FCE7F3' },
-          { label:'Regulares',     value: counts.regularPatients, icon:'ti-user',              color:'#0EA5E9', bg:'#E0F2FE' },
-          { label:'Productos',     value: counts.inventory,       icon:'ti-package',           color:'#16A34A', bg:'#DCFCE7' },
-          { label:'Servicios',     value: counts.services,        icon:'ti-stethoscope',       color:'#F59E0B', bg:'#FEF3C7' },
+          { label:'Citas',          value: counts.appointments,    icon:'ti-calendar',    color:'#7C3AED', bg:'#EDE9FE' },
+          { label:'Pacientes Lumi', value: counts.lumiPatients,    icon:'ti-paw',         color:'#DB2777', bg:'#FCE7F3' },
+          { label:'Regulares',      value: counts.regularPatients, icon:'ti-user',        color:'#0EA5E9', bg:'#E0F2FE' },
+          { label:'Productos',      value: counts.inventory,       icon:'ti-package',     color:'#16A34A', bg:'#DCFCE7' },
+          { label:'Servicios',      value: counts.services,        icon:'ti-stethoscope', color:'#F59E0B', bg:'#FEF3C7' },
         ].map(k => (
           <div key={k.label} className="stat-card">
             <div className="stat-icon" style={{ background:k.bg }}>
@@ -219,15 +420,14 @@ export default function AdminGlobal({ clinic }) {
         ))}
       </div>
 
-      {/* KPIs — Finanzas */}
       <p style={{ fontSize:11, fontWeight:700, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'1px', margin:'0 0 12px' }}>
-        Finanzas — {getDateRange(period, selectedYear).label}
+        Finanzas — {periodLabel}
       </p>
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:14, marginBottom:20 }}>
         {[
-          { label:'Total ingresos',    value: formatMoney(income),    icon:'ti-trending-up',  color:'#16A34A', bg:'#DCFCE7' },
-          { label:'Servicios',         value: formatMoney(incomeSvc), icon:'ti-stethoscope',  color:'#7C3AED', bg:'#EDE9FE' },
-          { label:'Productos',         value: formatMoney(incomePrd), icon:'ti-package',      color:'#0EA5E9', bg:'#E0F2FE' },
+          { label:'Total ingresos', value: formatMoney(income),    icon:'ti-trending-up', color:'#16A34A', bg:'#DCFCE7' },
+          { label:'Servicios',      value: formatMoney(incomeSvc), icon:'ti-stethoscope', color:'#7C3AED', bg:'#EDE9FE' },
+          { label:'Productos',      value: formatMoney(incomePrd), icon:'ti-package',     color:'#0EA5E9', bg:'#E0F2FE' },
         ].map(k => (
           <div key={k.label} className="stat-card">
             <div className="stat-icon" style={{ background:k.bg }}>
@@ -241,32 +441,25 @@ export default function AdminGlobal({ clinic }) {
         ))}
       </div>
 
-      {/* Vista anual — tabla mes a mes */}
       {period === 'year' && (
         <div className="card" style={{ marginBottom:20 }}>
           <p style={{ fontSize:13, fontWeight:700, color:'var(--text-secondary)', textTransform:'uppercase', letterSpacing:'0.6px', margin:'0 0 16px' }}>
             Desglose mensual — {selectedYear}
           </p>
           <table className="table">
-            <thead>
-              <tr><th>Mes</th><th>Ingresos</th><th>% del año</th></tr>
-            </thead>
+            <thead><tr><th>Mes</th><th>Ingresos</th><th>% del año</th></tr></thead>
             <tbody>
               {MONTHS.map((mes, i) => (
                 <tr key={mes} style={{ opacity: byMonth[i] === 0 ? 0.4 : 1 }}>
                   <td style={{ fontWeight:600 }}>{mes}</td>
-                  <td style={{ fontWeight:700, color: byMonth[i] > 0 ? '#16A34A' : 'var(--text-muted)' }}>
-                    {formatMoney(byMonth[i])}
-                  </td>
+                  <td style={{ fontWeight:700, color: byMonth[i] > 0 ? '#16A34A' : 'var(--text-muted)' }}>{formatMoney(byMonth[i])}</td>
                   <td>
                     {income > 0 ? (
                       <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                         <div style={{ flex:1, height:6, background:'var(--border)', borderRadius:3, overflow:'hidden' }}>
                           <div style={{ height:'100%', width:`${(byMonth[i]/income)*100}%`, background:'var(--gradient)', borderRadius:3 }} />
                         </div>
-                        <span style={{ fontSize:11, color:'var(--text-muted)', minWidth:32 }}>
-                          {income > 0 ? Math.round((byMonth[i]/income)*100) : 0}%
-                        </span>
+                        <span style={{ fontSize:11, color:'var(--text-muted)', minWidth:32 }}>{Math.round((byMonth[i]/income)*100)}%</span>
                       </div>
                     ) : '—'}
                   </td>
@@ -284,10 +477,8 @@ export default function AdminGlobal({ clinic }) {
         </div>
       )}
 
-      {/* Gráficas */}
       {period !== 'year' && (
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:20 }}>
-          {/* Gráfica por día */}
           <div className="card">
             <p style={{ fontSize:13, fontWeight:700, color:'var(--text-secondary)', textTransform:'uppercase', letterSpacing:'0.6px', margin:'0 0 16px' }}>Ingresos por día</p>
             {sortedDays.length === 0 ? (
@@ -308,8 +499,6 @@ export default function AdminGlobal({ clinic }) {
               </div>
             )}
           </div>
-
-          {/* Por categoría */}
           <div className="card">
             <p style={{ fontSize:13, fontWeight:700, color:'var(--text-secondary)', textTransform:'uppercase', letterSpacing:'0.6px', margin:'0 0 16px' }}>Por categoría</p>
             {Object.keys(byCategory).length === 0 ? (
@@ -333,7 +522,6 @@ export default function AdminGlobal({ clinic }) {
         </div>
       )}
 
-      {/* Tabla transacciones */}
       <div className="card">
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
           <p style={{ fontSize:13, fontWeight:700, color:'var(--text-secondary)', textTransform:'uppercase', letterSpacing:'0.6px', margin:0 }}>Registros</p>
@@ -349,9 +537,7 @@ export default function AdminGlobal({ clinic }) {
           </div>
         ) : (
           <table className="table">
-            <thead>
-              <tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th><th></th></tr>
-            </thead>
+            <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th><th></th></tr></thead>
             <tbody>
               {transactions.map(t => (
                 <tr key={t.id}>
@@ -375,7 +561,6 @@ export default function AdminGlobal({ clinic }) {
         )}
       </div>
 
-      {/* Modal registrar */}
       {showAdd && (
         <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setShowAdd(false)}>
           <div className="modal">
