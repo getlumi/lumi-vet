@@ -4,7 +4,7 @@ import jsPDF from 'jspdf'
 
 const localToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Cancun' }).format(new Date())
 
-export default function Patients({ clinic, openNew }) {
+export default function Patients({ clinic, openNew, plan, can, onNavigateAppointment }) {
   const [tab, setTab]                       = useState('todos')
   const [lumiPatients, setLumiPatients]     = useState([])
   const [regularPatients, setRegularPatients] = useState([])
@@ -17,7 +17,8 @@ export default function Patients({ clinic, openNew }) {
   const [certificates, setCertificates]     = useState([])
   const [showRecord, setShowRecord]         = useState(false)
   const [showNew, setShowNew]               = useState(openNew || false)
-  const [showVisit, setShowVisit]           = useState(false)
+  const [showVisit, setShowVisit]           = useState(openNew === 'walkin')
+  const [walkinMode, setWalkinMode]         = useState(openNew === 'walkin')
   const [showCarnet, setShowCarnet]         = useState(false)
   const [showCert, setShowCert]             = useState(false)
   const [pointsMsg, setPointsMsg]           = useState(null)
@@ -694,9 +695,35 @@ export default function Patients({ clinic, openNew }) {
 
       {/* MODAL VISITA */}
       {showVisit && (
-        <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setShowVisit(false)}>
+        <div className="modal-overlay" onClick={e => e.target===e.currentTarget && (setShowVisit(false), setWalkinMode(false))}>
           <div className="modal" style={{ maxWidth:560 }}>
-            <p style={{ fontSize:17, fontWeight:800, margin:'0 0 16px' }}>+ Visita — {petName}</p>
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
+              <div style={{ flex:1 }}>
+                <p style={{ fontSize:17, fontWeight:800, margin:0 }}>
+                  {walkinMode ? '🚪 Mostrador' : `+ Visita — ${petName}`}
+                </p>
+                {walkinMode && !selected && (
+                  <p style={{ fontSize:12, color:'var(--text-muted)', margin:'4px 0 0' }}>
+                    Selecciona al paciente Lumi de la lista para registrar su visita
+                  </p>
+                )}
+              </div>
+            </div>
+            {/* Si viene de walkin y no hay paciente, mostrar aviso */}
+            {walkinMode && !selected && (
+              <div style={{ background:'#FEF3C7', border:'1px solid #FDE68A', borderRadius:12, padding:'12px 14px', marginBottom:16 }}>
+                <p style={{ fontSize:13, fontWeight:700, color:'#92400E', margin:'0 0 4px' }}>
+                  <i className="ti ti-info-circle" style={{ marginRight:6 }} />Selecciona primero al paciente
+                </p>
+                <p style={{ fontSize:12, color:'#92400E', margin:0 }}>
+                  Busca al paciente Lumi en la lista de la izquierda y da click en "+ Visita"
+                </p>
+                <button onClick={() => { setShowVisit(false); setWalkinMode(false) }}
+                  style={{ marginTop:10, background:'#D97706', border:'none', borderRadius:8, padding:'8px 16px', color:'white', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                  Ir a buscar paciente
+                </button>
+              </div>
+            )}
             <div style={{ display:'flex', gap:8, marginBottom:16 }}>
               {['servicio','producto'].map(t => (
                 <button key={t} onClick={() => setVisitType(t)} style={{ flex:1, padding:'10px', borderRadius:8, border:`2px solid ${visitType===t?'#6B21A8':'var(--border)'}`, background:visitType===t?'#EDE9FE':'white', cursor:'pointer', fontWeight:700, fontSize:13, color:visitType===t?'#6B21A8':'var(--text-secondary)' }}>
