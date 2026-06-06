@@ -454,9 +454,10 @@ export default function Patients({ clinic, openNew, plan, can, onNavigateAppoint
     return y > 0 ? `${y} años` : 'Cachorro'
   }
 
+  const canSeeRegular = can?.seeRegularPatients ?? true
   const allPatients = [
     ...lumiPatients.map(p => ({ ...p, _type:'lumi', _name: p.pets?.name, _owner: p.profiles?.name })),
-    ...regularPatients.map(p => ({ ...p, _type:'regular', _name: p.pet_name, _owner: p.owner_name })),
+    ...(canSeeRegular ? regularPatients.map(p => ({ ...p, _type:'regular', _name: p.pet_name, _owner: p.owner_name })) : []),
   ].sort((a,b) => (b.last_visit||'2000-01-01').localeCompare(a.last_visit||'2000-01-01'))
 
   const formatLumiId = (raw) => {
@@ -503,14 +504,16 @@ export default function Patients({ clinic, openNew, plan, can, onNavigateAppoint
           </div>
         )}
 
-        <div style={{ display:'flex', marginBottom:14, border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
-          {[{key:'todos',label:`Todos (${allPatients.length})`},{key:'lumi',label:`Lumi (${lumiPatients.length})`},{key:'regular',label:`Regular (${regularPatients.length})`}].map(t => (
-            <button key={t.key} onClick={() => { setTab(t.key); setSelected(null) }}
-              style={{ flex:1, padding:'9px 0', fontSize:12, fontWeight:700, border:'none', cursor:'pointer', background: tab===t.key?'#6B21A8':'white', color: tab===t.key?'white':'var(--text-secondary)' }}>
-              {t.label}
-            </button>
-          ))}
-        </div>
+        {canSeeRegular && (
+          <div style={{ display:'flex', marginBottom:14, border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
+            {[{key:'todos',label:`Todos (${allPatients.length})`},{key:'lumi',label:`Lumi (${lumiPatients.length})`},{key:'regular',label:`Regular (${regularPatients.length})`}].map(t => (
+              <button key={t.key} onClick={() => { setTab(t.key); setSelected(null) }}
+                style={{ flex:1, padding:'9px 0', fontSize:12, fontWeight:700, border:'none', cursor:'pointer', background: tab===t.key?'#6B21A8':'white', color: tab===t.key?'white':'var(--text-secondary)' }}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         <input className="input" style={{ marginBottom:12 }} value={search}
           onChange={e => {
@@ -957,10 +960,12 @@ export default function Patients({ clinic, openNew, plan, can, onNavigateAppoint
         <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setShowNew(false)}>
           <div className="modal" style={{ maxWidth:540 }}>
             <p style={{ fontSize:17, fontWeight:800, margin:'0 0 16px' }}>Nuevo paciente</p>
-            <div style={{ display:'flex', marginBottom:20, border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
-              <button onClick={() => setTab('lumi')} style={{ flex:1, padding:'9px 0', fontSize:13, fontWeight:700, border:'none', cursor:'pointer', background:tab==='lumi'?'#6B21A8':'white', color:tab==='lumi'?'white':'var(--text-secondary)' }}>Paciente Lumi</button>
-              <button onClick={() => setTab('regular')} style={{ flex:1, padding:'9px 0', fontSize:13, fontWeight:700, border:'none', cursor:'pointer', background:tab==='regular'?'#6B21A8':'white', color:tab==='regular'?'white':'var(--text-secondary)' }}>Paciente Regular</button>
-            </div>
+            {canSeeRegular && (
+              <div style={{ display:'flex', marginBottom:20, border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
+                <button onClick={() => setTab('lumi')} style={{ flex:1, padding:'9px 0', fontSize:13, fontWeight:700, border:'none', cursor:'pointer', background:tab==='lumi'?'#6B21A8':'white', color:tab==='lumi'?'white':'var(--text-secondary)' }}>Paciente Lumi</button>
+                <button onClick={() => setTab('regular')} style={{ flex:1, padding:'9px 0', fontSize:13, fontWeight:700, border:'none', cursor:'pointer', background:tab==='regular'?'#6B21A8':'white', color:tab==='regular'?'white':'var(--text-secondary)' }}>Paciente Regular</button>
+              </div>
+            )}
             {tab==='lumi' && (
               <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
                 <p style={{ fontSize:13, color:'var(--text-secondary)', margin:0 }}>Ingresa el codigo Lumi (ej: <strong>LMI-2026-L1RD62</strong>)</p>
