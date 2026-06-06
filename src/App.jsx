@@ -220,7 +220,7 @@ export default function App() {
       case 'dashboard':
         return <Dashboard clinic={clinic} session={session} onNavigate={navigate} />
       case 'appointments':
-        return <Appointments clinic={clinic} session={session} initialForm={pageParams?.appointmentForm || null} />
+        return <Appointments clinic={clinic} session={session} plan={plan} initialForm={pageParams?.appointmentForm || null} />
       case 'patients':
         return (
           <Patients
