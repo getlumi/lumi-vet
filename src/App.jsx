@@ -247,7 +247,7 @@ export default function App() {
       case 'settings':
         return <Settings clinic={clinic} session={session} onUpdate={setClinic} onPlans={() => navigate('plans')} />
       case 'admin':
-        return <AdminGlobal clinic={clinic} session={session} />
+        return <AdminGlobal clinic={clinic} session={session} plan={plan} />
       case 'plans':
         return <Plans currentPlan={plan} clinic={clinic} onNavigate={navigate} />
       case 'soporte':
