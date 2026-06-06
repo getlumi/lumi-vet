@@ -5,19 +5,27 @@ const HOURS = ['07:00','07:30','08:00','08:30','09:00','09:30','10:00','10:30','
 const STATUS_COLORS = { pending:'badge-amber', confirmed:'badge-green', completed:'badge-purple', cancelled:'badge-red' }
 const STATUS_LABELS = { pending:'Pendiente', confirmed:'Confirmada', completed:'Completada', cancelled:'Cancelada' }
 
+// Motivos predefinidos para plan básico
+const MOTIVOS_BASICO = [
+  { id:'bano',            label:'🛁 Baño' },
+  { id:'corte',           label:'✂️ Corte' },
+  { id:'consulta',        label:'🩺 Consulta' },
+  { id:'revision',        label:'🔍 Revisión' },
+  { id:'vacuna',          label:'💉 Vacuna' },
+  { id:'desparasitacion', label:'🐛 Desparasitación' },
+  { id:'otro',            label:'📋 Otro' },
+]
+
 const localToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Cancun' }).format(new Date())
 
-// Hora actual en Cancún como "HH:MM"
 const localNow = () => new Intl.DateTimeFormat('en-CA', {
   timeZone: 'America/Cancun', hour: '2-digit', minute: '2-digit', hour12: false
 }).format(new Date()).slice(0, 5)
 
-// Horas disponibles según fecha — si es hoy, solo horas futuras (con 30min de margen)
 const getAvailableHours = (date) => {
   if (date !== localToday()) return HOURS
   const now = localNow()
   const [h, m] = now.split(':').map(Number)
-  // Agregar 30 minutos de margen mínimo
   const minMinutes = h * 60 + m + 30
   return HOURS.filter(hour => {
     const [hh, mm] = hour.split(':').map(Number)
@@ -25,7 +33,6 @@ const getAvailableHours = (date) => {
   })
 }
 
-// Primera hora disponible para hoy, o 09:00 para días futuros
 const getDefaultTime = (date) => {
   const available = getAvailableHours(date)
   return available.length > 0 ? available[0] : '09:00'
@@ -35,15 +42,15 @@ const emptyForm = () => {
   const date = localToday()
   return {
     lumi_code:'', pet_id:null, pet_name:'', owner_name:'',
-    date,
-    time: getDefaultTime(date),
+    date, time: getDefaultTime(date),
     notes:'', status:'confirmed', price:'',
     service_id: null, service_name:'',
     bath_size: null, bath_extras: [],
+    motivo_id: null, // para básico
   }
 }
 
-export default function Appointments({ clinic, initialForm }) {
+export default function Appointments({ clinic, initialForm, plan }) {
   const [appointments, setAppointments] = useState([])
   const [services, setServices]         = useState([])
   const [selectedDate, setSelectedDate] = useState(localToday())
@@ -54,8 +61,10 @@ export default function Appointments({ clinic, initialForm }) {
   const [form, setForm]                 = useState(initialForm || emptyForm())
   const [timeError, setTimeError]       = useState('')
 
+  const isBasic = ['basic','basic_bot'].includes(plan || 'basic')
+
   useEffect(() => { fetchAppointments() }, [selectedDate])
-  useEffect(() => { fetchServices() }, [])
+  useEffect(() => { if (!isBasic) fetchServices() }, [isBasic])
 
   const fetchAppointments = async () => {
     setLoading(true)
@@ -73,20 +82,16 @@ export default function Appointments({ clinic, initialForm }) {
     const { data } = await supabase
       .from('vet_services')
       .select('id, name, price, is_bath_service, is_active, price_small, price_medium, price_large, small_max_kg, medium_max_kg, large_max_kg, extra_1_name, extra_1_price, extra_2_name, extra_2_price, extra_3_name, extra_3_price')
-      .eq('clinic_id', clinic.id)
-      .eq('is_active', true)
-      .order('name')
+      .eq('clinic_id', clinic.id).eq('is_active', true).order('name')
     setServices((data || []).map(s => ({ ...s, sale_price: s.price })))
   }
 
   const searchLumi = async (code) => {
     if (!code || code.length < 10) return
     setLumiLoading(true)
-    const { data: pet } = await supabase
-      .from('pets')
+    const { data: pet } = await supabase.from('pets')
       .select('id, name, weight, breed, pet_type, profiles(name)')
-      .eq('lumi_id', code.trim().toUpperCase())
-      .single()
+      .eq('lumi_id', code.trim().toUpperCase()).single()
     if (pet) {
       setLumiPet(pet)
       setForm(f => ({ ...f, pet_id: pet.id, pet_name: pet.name, owner_name: pet.profiles?.name || '' }))
@@ -148,20 +153,13 @@ export default function Appointments({ clinic, initialForm }) {
     setForm(f => ({ ...f, bath_extras: newExtras, price: String(basePrice + extrasTotal) }))
   }
 
-  // Cuando cambia la fecha, ajustar hora automáticamente si es necesario
   const handleDateChange = (newDate) => {
     setTimeError('')
     const available = getAvailableHours(newDate)
-    // Si la hora actual del form ya no está disponible, tomar la primera disponible
     const timeStillValid = available.includes(form.time)
-    setForm(f => ({
-      ...f,
-      date: newDate,
-      time: timeStillValid ? f.time : (available[0] || '09:00'),
-    }))
+    setForm(f => ({ ...f, date: newDate, time: timeStillValid ? f.time : (available[0] || '09:00') }))
   }
 
-  // Cuando cambia la hora, validar
   const handleTimeChange = (newTime) => {
     setTimeError('')
     const available = getAvailableHours(form.date)
@@ -171,9 +169,8 @@ export default function Appointments({ clinic, initialForm }) {
     setForm(f => ({ ...f, time: newTime }))
   }
 
-  const selectedService = services.find(s => s.id === form.service_id)
-  const isBath = selectedService?.is_bath_service
-
+  const selectedService    = services.find(s => s.id === form.service_id)
+  const isBath             = selectedService?.is_bath_service
   const bathExtrasAvailable = selectedService ? [
     selectedService.extra_1_name && { name: selectedService.extra_1_name, price: selectedService.extra_1_price || 0 },
     selectedService.extra_2_name && { name: selectedService.extra_2_name, price: selectedService.extra_2_price || 0 },
@@ -182,7 +179,6 @@ export default function Appointments({ clinic, initialForm }) {
 
   const saveAppointment = async () => {
     if (!form.pet_name.trim() || !form.owner_name.trim()) return
-    // Validación final de hora — por si acaso
     if (form.date === localToday()) {
       const available = getAvailableHours(form.date)
       if (!available.includes(form.time)) {
@@ -190,19 +186,27 @@ export default function Appointments({ clinic, initialForm }) {
         return
       }
     }
+    // Para básico, el motivo va en notes y service_name
+    const notesValue   = isBasic
+      ? [MOTIVOS_BASICO.find(m => m.id === form.motivo_id)?.label, form.notes].filter(Boolean).join(' — ')
+      : form.notes
+    const serviceValue = isBasic
+      ? (MOTIVOS_BASICO.find(m => m.id === form.motivo_id)?.label || null)
+      : (form.service_name || null)
+
     const { error } = await supabase.from('vet_appointments').insert({
       clinic_id:    clinic.id,
       date:         form.date,
       time:         form.time,
-      notes:        form.notes,
+      notes:        notesValue,
       status:       form.status,
-      price:        form.price ? parseFloat(form.price) : null,
+      price:        isBasic ? null : (form.price ? parseFloat(form.price) : null),
       pet_id:       form.pet_id || null,
       pet_name:     form.pet_name,
       owner_name:   form.owner_name,
-      service_name: form.service_name || null,
-      bath_size:    form.bath_size || null,
-      bath_extras:  form.bath_extras.length > 0 ? form.bath_extras : null,
+      service_name: serviceValue,
+      bath_size:    isBasic ? null : (form.bath_size || null),
+      bath_extras:  isBasic ? null : (form.bath_extras.length > 0 ? form.bath_extras : null),
     })
     if (!error) {
       if (form.date === selectedDate) fetchAppointments()
@@ -276,7 +280,11 @@ export default function Appointments({ clinic, initialForm }) {
         ) : (
           <table className="table">
             <thead>
-              <tr><th>Hora</th><th>Mascota</th><th>Dueño</th><th>Servicio</th><th>Precio</th><th>Estado</th><th>Acciones</th></tr>
+              <tr>
+                <th>Hora</th><th>Mascota</th><th>Dueño</th><th>Motivo</th>
+                {!isBasic && <th>Precio</th>}
+                <th>Estado</th><th>Acciones</th>
+              </tr>
             </thead>
             <tbody>
               {appointments.map(appt => (
@@ -295,7 +303,7 @@ export default function Appointments({ clinic, initialForm }) {
                     {appt.service_name || appt.notes || '—'}
                     {appt.bath_size && <span className="badge badge-amber" style={{ marginLeft:6, fontSize:10 }}>{appt.bath_size === 'small' ? 'Chico' : appt.bath_size === 'medium' ? 'Mediano' : 'Grande'}</span>}
                   </td>
-                  <td style={{ fontWeight:700 }}>{appt.price ? `$${appt.price}` : '—'}</td>
+                  {!isBasic && <td style={{ fontWeight:700 }}>{appt.price ? `$${appt.price}` : '—'}</td>}
                   <td><span className={`badge ${STATUS_COLORS[appt.status]}`}>{STATUS_LABELS[appt.status]}</span></td>
                   <td>
                     <div style={{ display:'flex', gap:6 }}>
@@ -358,13 +366,7 @@ export default function Appointments({ clinic, initialForm }) {
               <div className="grid-2">
                 <div>
                   <label className="label">Fecha *</label>
-                  <input
-                    className="input"
-                    type="date"
-                    value={form.date}
-                    min={localToday()}
-                    onChange={e => handleDateChange(e.target.value)}
-                  />
+                  <input className="input" type="date" value={form.date} min={localToday()} onChange={e => handleDateChange(e.target.value)} />
                 </div>
                 <div>
                   <label className="label">Hora *</label>
@@ -373,120 +375,147 @@ export default function Appointments({ clinic, initialForm }) {
                       Sin horarios disponibles hoy
                     </div>
                   ) : (
-                    <select
-                      className="input"
-                      value={form.time}
-                      onChange={e => handleTimeChange(e.target.value)}
-                      style={{ borderColor: timeError ? '#FCA5A5' : undefined }}
-                    >
+                    <select className="input" value={form.time} onChange={e => handleTimeChange(e.target.value)} style={{ borderColor: timeError ? '#FCA5A5' : undefined }}>
                       {availableHours.map(h => <option key={h} value={h}>{h}</option>)}
                     </select>
                   )}
-                  {timeError && (
-                    <p style={{ fontSize:11, color:'#DC2626', margin:'4px 0 0', fontWeight:600 }}>
-                      ⚠ {timeError}
-                    </p>
-                  )}
+                  {timeError && <p style={{ fontSize:11, color:'#DC2626', margin:'4px 0 0', fontWeight:600 }}>⚠ {timeError}</p>}
                 </div>
               </div>
 
-              {/* Servicio */}
-              <div>
-                <label className="label">Servicio</label>
-                {services.length === 0 ? (
-                  <p style={{ fontSize:12, color:'var(--text-muted)', margin:'4px 0 0' }}>
-                    No hay servicios activos. Agrégalos en la sección Servicios.
-                  </p>
-                ) : (
-                  <select className="input" value={form.service_id || ''} onChange={e => handleServiceChange(e.target.value || null)}>
-                    <option value="">— Seleccionar servicio (opcional) —</option>
-                    {services.map(s => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}{s.is_bath_service ? ' 🛁' : ''}{s.price ? ` — $${s.price}` : ''}
-                      </option>
+              {/* ── BÁSICO: chips de motivo ── */}
+              {isBasic && (
+                <div>
+                  <label className="label">Motivo de la cita</label>
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:10 }}>
+                    {MOTIVOS_BASICO.map(m => (
+                      <button key={m.id} type="button"
+                        onClick={() => setForm(f => ({ ...f, motivo_id: f.motivo_id === m.id ? null : m.id }))}
+                        style={{
+                          padding:'7px 14px', borderRadius:20, border:`1.5px solid ${form.motivo_id === m.id ? 'var(--purple)' : 'var(--border)'}`,
+                          background: form.motivo_id === m.id ? 'var(--purple-light)' : 'white',
+                          color: form.motivo_id === m.id ? 'var(--purple)' : 'var(--text-secondary)',
+                          fontSize:13, fontWeight:600, cursor:'pointer', transition:'all 0.15s',
+                        }}>
+                        {m.label}
+                      </button>
                     ))}
-                  </select>
-                )}
-              </div>
-
-              {/* Panel de baño */}
-              {isBath && (
-                <div style={{ background:'var(--purple-lighter, #F5F3FF)', borderRadius:14, padding:14, display:'flex', flexDirection:'column', gap:12 }}>
-                  <p style={{ fontSize:12, fontWeight:700, color:'var(--purple)', textTransform:'uppercase', letterSpacing:'0.5px', margin:0 }}>🛁 Configuración del baño</p>
-                  {form.bath_size && (
-                    <div style={{ background:'var(--purple)', borderRadius:10, padding:'8px 14px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                      <span style={{ fontSize:13, color:'rgba(255,255,255,0.8)', fontWeight:600 }}>Total estimado</span>
-                      <span style={{ fontSize:18, fontWeight:900, color:'white' }}>${form.price || '0'}</span>
-                    </div>
-                  )}
-                  {lumiPet?.weight && (
-                    <p style={{ fontSize:12, color:'var(--text-secondary)', margin:0 }}>
-                      Peso de {lumiPet.name}: <strong>{lumiPet.weight} kg</strong>
-                      {form.bath_size && <span style={{ marginLeft:8, color:'var(--purple)', fontWeight:700 }}>→ Talla: {BATH_LABELS[form.bath_size]?.label}</span>}
-                    </p>
-                  )}
-                  <div>
-                    <label className="label">Talla</label>
-                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
-                      {['small','medium','large'].map(size => {
-                        const info = BATH_LABELS[size]
-                        const price = selectedService ? getBathPrice(selectedService, size) : null
-                        const isSelected = form.bath_size === size
-                        return (
-                          <button key={size} onClick={() => handleBathSize(size, selectedService)}
-                            style={{ padding:'10px 8px', borderRadius:10, border:`2px solid ${isSelected?'var(--purple)':'var(--border)'}`, background: isSelected?'var(--purple-light)':'white', cursor:'pointer', textAlign:'center', transition:'all 0.15s' }}>
-                            <p style={{ fontSize:18, margin:'0 0 2px' }}>{info.icon}</p>
-                            <p style={{ fontSize:12, fontWeight:700, color: isSelected?'var(--purple)':'var(--text-primary)', margin:'0 0 2px' }}>{info.label}</p>
-                            <p style={{ fontSize:10, color:'var(--text-muted)', margin:'0 0 4px' }}>{info.desc}</p>
-                            {price != null && <p style={{ fontSize:13, fontWeight:800, color: isSelected?'var(--purple)':'var(--text-secondary)', margin:0 }}>${price}</p>}
-                          </button>
-                        )
-                      })}
-                    </div>
                   </div>
-                  {bathExtrasAvailable.length > 0 && (
-                    <div>
-                      <label className="label">Extras</label>
-                      <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-                        {bathExtrasAvailable.map(extra => {
-                          const selected = form.bath_extras.find(e => e.name === extra.name)
-                          return (
-                            <label key={extra.name} onClick={() => toggleExtra(extra, selectedService, form.bath_size)}
-                              style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 12px', background: selected?'var(--purple-light)':'white', borderRadius:8, border:`1px solid ${selected?'var(--purple)':'var(--border)'}`, cursor:'pointer', transition:'all 0.15s' }}>
-                              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                                <input type="checkbox" checked={!!selected} readOnly style={{ accentColor:'var(--purple)' }} />
-                                <span style={{ fontSize:13, fontWeight:600, color: selected?'var(--purple)':'var(--text-primary)' }}>{extra.name}</span>
-                              </div>
-                              <span style={{ fontSize:13, fontWeight:700, color:'var(--purple)' }}>+${extra.price}</span>
-                            </label>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
+                  <input className="input" value={form.notes} onChange={e => setForm(f=>({...f,notes:e.target.value}))}
+                    placeholder="Notas adicionales (opcional)..." />
                 </div>
               )}
 
-              {/* Notas */}
-              <div>
-                <label className="label">Notas / Motivo</label>
-                <input className="input" value={form.notes} onChange={e => setForm(f=>({...f,notes:e.target.value}))} placeholder="Consulta general, vacunación..." />
-              </div>
+              {/* ── PRO/PLUS: selector de servicios ── */}
+              {!isBasic && (
+                <>
+                  <div>
+                    <label className="label">Servicio</label>
+                    {services.length === 0 ? (
+                      <p style={{ fontSize:12, color:'var(--text-muted)', margin:'4px 0 0' }}>
+                        No hay servicios activos. Agrégalos en la sección Servicios.
+                      </p>
+                    ) : (
+                      <select className="input" value={form.service_id || ''} onChange={e => handleServiceChange(e.target.value || null)}>
+                        <option value="">— Seleccionar servicio (opcional) —</option>
+                        {services.map(s => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}{s.is_bath_service ? ' 🛁' : ''}{s.price ? ` — $${s.price}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
 
-              {/* Estado y precio */}
-              <div className="grid-2">
-                <div>
+                  {/* Panel de baño */}
+                  {isBath && (
+                    <div style={{ background:'var(--purple-lighter, #F5F3FF)', borderRadius:14, padding:14, display:'flex', flexDirection:'column', gap:12 }}>
+                      <p style={{ fontSize:12, fontWeight:700, color:'var(--purple)', textTransform:'uppercase', letterSpacing:'0.5px', margin:0 }}>🛁 Configuración del baño</p>
+                      {form.bath_size && (
+                        <div style={{ background:'var(--purple)', borderRadius:10, padding:'8px 14px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                          <span style={{ fontSize:13, color:'rgba(255,255,255,0.8)', fontWeight:600 }}>Total estimado</span>
+                          <span style={{ fontSize:18, fontWeight:900, color:'white' }}>${form.price || '0'}</span>
+                        </div>
+                      )}
+                      {lumiPet?.weight && (
+                        <p style={{ fontSize:12, color:'var(--text-secondary)', margin:0 }}>
+                          Peso de {lumiPet.name}: <strong>{lumiPet.weight} kg</strong>
+                          {form.bath_size && <span style={{ marginLeft:8, color:'var(--purple)', fontWeight:700 }}>→ Talla: {BATH_LABELS[form.bath_size]?.label}</span>}
+                        </p>
+                      )}
+                      <div>
+                        <label className="label">Talla</label>
+                        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
+                          {['small','medium','large'].map(size => {
+                            const info = BATH_LABELS[size]
+                            const price = selectedService ? getBathPrice(selectedService, size) : null
+                            const isSelected = form.bath_size === size
+                            return (
+                              <button key={size} onClick={() => handleBathSize(size, selectedService)}
+                                style={{ padding:'10px 8px', borderRadius:10, border:`2px solid ${isSelected?'var(--purple)':'var(--border)'}`, background: isSelected?'var(--purple-light)':'white', cursor:'pointer', textAlign:'center', transition:'all 0.15s' }}>
+                                <p style={{ fontSize:18, margin:'0 0 2px' }}>{info.icon}</p>
+                                <p style={{ fontSize:12, fontWeight:700, color: isSelected?'var(--purple)':'var(--text-primary)', margin:'0 0 2px' }}>{info.label}</p>
+                                <p style={{ fontSize:10, color:'var(--text-muted)', margin:'0 0 4px' }}>{info.desc}</p>
+                                {price != null && <p style={{ fontSize:13, fontWeight:800, color: isSelected?'var(--purple)':'var(--text-secondary)', margin:0 }}>${price}</p>}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                      {bathExtrasAvailable.length > 0 && (
+                        <div>
+                          <label className="label">Extras</label>
+                          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                            {bathExtrasAvailable.map(extra => {
+                              const selected = form.bath_extras.find(e => e.name === extra.name)
+                              return (
+                                <label key={extra.name} onClick={() => toggleExtra(extra, selectedService, form.bath_size)}
+                                  style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 12px', background: selected?'var(--purple-light)':'white', borderRadius:8, border:`1px solid ${selected?'var(--purple)':'var(--border)'}`, cursor:'pointer', transition:'all 0.15s' }}>
+                                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                                    <input type="checkbox" checked={!!selected} readOnly style={{ accentColor:'var(--purple)' }} />
+                                    <span style={{ fontSize:13, fontWeight:600, color: selected?'var(--purple)':'var(--text-primary)' }}>{extra.name}</span>
+                                  </div>
+                                  <span style={{ fontSize:13, fontWeight:700, color:'var(--purple)' }}>+${extra.price}</span>
+                                </label>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Notas y precio — solo Pro/Plus */}
+                  <div>
+                    <label className="label">Notas / Motivo</label>
+                    <input className="input" value={form.notes} onChange={e => setForm(f=>({...f,notes:e.target.value}))} placeholder="Consulta general, vacunación..." />
+                  </div>
+                  <div className="grid-2">
+                    <div>
+                      <label className="label">Estado</label>
+                      <select className="input" value={form.status} onChange={e => setForm(f=>({...f,status:e.target.value}))}>
+                        <option value="pending">Pendiente</option>
+                        <option value="confirmed">Confirmada</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label">Precio total</label>
+                      <input className="input" type="text" inputMode="numeric" key={form.bath_size || 'no-bath'} value={form.price} onChange={e => setForm(f=>({...f,price:e.target.value}))} placeholder="0.00" style={{ fontWeight:700, color:'var(--purple)' }} />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Estado — básico también lo tiene */}
+              {isBasic && (
+                <div style={{ maxWidth:200 }}>
                   <label className="label">Estado</label>
                   <select className="input" value={form.status} onChange={e => setForm(f=>({...f,status:e.target.value}))}>
                     <option value="pending">Pendiente</option>
                     <option value="confirmed">Confirmada</option>
                   </select>
                 </div>
-                <div>
-                  <label className="label">Precio total</label>
-                  <input className="input" type="text" inputMode="numeric" key={form.bath_size || 'no-bath'} value={form.price} onChange={e => setForm(f=>({...f,price:e.target.value}))} placeholder="0.00" style={{ fontWeight:700, color:'var(--purple)' }} />
-                </div>
-              </div>
+              )}
 
               {!canSave && !timeError && <p style={{ fontSize:12, color:'#DC2626', margin:0 }}>* Nombre de mascota y dueño son obligatorios</p>}
 
