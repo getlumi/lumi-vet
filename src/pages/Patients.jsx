@@ -732,74 +732,118 @@ export default function Patients({ clinic, openNew, plan, can, onNavigateAppoint
                 </button>
               </div>
             )}
-            <div style={{ display:'flex', gap:8, marginBottom:16 }}>
-              {['servicio','producto'].map(t => (
-                <button key={t} onClick={() => setVisitType(t)} style={{ flex:1, padding:'10px', borderRadius:8, border:`2px solid ${visitType===t?'#6B21A8':'var(--border)'}`, background:visitType===t?'#EDE9FE':'white', cursor:'pointer', fontWeight:700, fontSize:13, color:visitType===t?'#6B21A8':'var(--text-secondary)' }}>
-                  {t==='servicio'?'Servicio':'Producto del inventario'}
-                </button>
-              ))}
-            </div>
-            {visitType==='servicio' && (
+            {/* ── BÁSICO: solo chips de motivo + notas ── */}
+            {canSeeRegular === false ? (
               <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
                 <div>
-                  <label className="label">Servicio</label>
-                  <select className="input" value={selectedServiceId} onChange={e => {
-                    const id = e.target.value
-                    setSelectedServiceId(id)
-                    if (!id) { setServiceDesc(''); setServicePrice(''); return }
-                    const svc = vetServices.find(s => s.id === id)
-                    if (!svc) return
-                    setServiceDesc(svc.name)
-                    setServicePrice(svc.price ? String(svc.price) : '')
-                  }}>
-                    <option value="">— Seleccionar servicio —</option>
-                    {vetServices.map(s => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}{s.is_bath_service?' 🛁':''}{s.price?` — $${s.price}`:''}
-                      </option>
+                  <label className="label">Motivo de la visita</label>
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:10 }}>
+                    {[
+                      { id:'bano',            label:'🛁 Baño' },
+                      { id:'corte',           label:'✂️ Corte' },
+                      { id:'consulta',        label:'🩺 Consulta' },
+                      { id:'revision',        label:'🔍 Revisión' },
+                      { id:'vacuna',          label:'💉 Vacuna' },
+                      { id:'desparasitacion', label:'🐛 Desparasitación' },
+                      { id:'otro',            label:'📋 Otro' },
+                    ].map(m => (
+                      <button key={m.id} type="button"
+                        onClick={() => setServiceDesc(prev => prev === m.label ? '' : m.label)}
+                        style={{
+                          padding:'7px 14px', borderRadius:20,
+                          border:`1.5px solid ${serviceDesc === m.label ? '#6B21A8' : 'var(--border)'}`,
+                          background: serviceDesc === m.label ? '#EDE9FE' : 'white',
+                          color: serviceDesc === m.label ? '#6B21A8' : 'var(--text-secondary)',
+                          fontSize:13, fontWeight:600, cursor:'pointer', transition:'all 0.15s',
+                        }}>
+                        {m.label}
+                      </button>
                     ))}
-                  </select>
+                  </div>
+                  <input className="input" value={serviceDesc.startsWith('📋') || !['🛁 Baño','✂️ Corte','🩺 Consulta','🔍 Revisión','💉 Vacuna','🐛 Desparasitación','📋 Otro'].includes(serviceDesc) ? serviceDesc : ''}
+                    onChange={e => setServiceDesc(e.target.value)}
+                    placeholder="Notas adicionales (opcional)..." />
                 </div>
-                <div><label className="label">Descripción / Notas</label><input className="input" value={serviceDesc} onChange={e => setServiceDesc(e.target.value)} placeholder="Consulta, baño, vacuna..." /></div>
-                <div><label className="label">Precio</label><input className="input" type="text" inputMode="numeric" value={servicePrice} onChange={e => setServicePrice(e.target.value)} placeholder="0.00" /></div>
+                <div style={{ display:'flex', gap:10, marginTop:4 }}>
+                  <button className="btn btn-secondary" onClick={() => setShowVisit(false)} style={{ flex:1, justifyContent:'center' }}>Cancelar</button>
+                  <button className="btn btn-primary" onClick={saveVisit} style={{ flex:2, justifyContent:'center' }}>
+                    Registrar visita
+                  </button>
+                </div>
               </div>
-            )}
-            {visitType==='producto' && (
-              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-                <input className="input" value={invSearch} onChange={e => setInvSearch(e.target.value)} placeholder="Buscar producto..." />
-                <div style={{ maxHeight:200, overflowY:'auto', display:'flex', flexDirection:'column', gap:6 }}>
-                  {filteredInv.map(item => (
-                    <div key={item.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 12px', background:'var(--bg)', borderRadius:8 }}>
-                      <div><p style={{ fontSize:13, fontWeight:600, margin:'0 0 2px' }}>{item.name}</p><p style={{ fontSize:11, color:'var(--text-muted)', margin:0 }}>{item.unit} · Stock: {item.stock} · ${item.sale_price||0}</p></div>
-                      <button className="btn btn-primary btn-sm" onClick={() => addToCart(item)}>+ Agregar</button>
-                    </div>
+            ) : (
+              /* ── PRO/PLUS: selector servicios + productos ── */
+              <>
+                <div style={{ display:'flex', gap:8, marginBottom:16 }}>
+                  {['servicio','producto'].map(t => (
+                    <button key={t} onClick={() => setVisitType(t)} style={{ flex:1, padding:'10px', borderRadius:8, border:`2px solid ${visitType===t?'#6B21A8':'var(--border)'}`, background:visitType===t?'#EDE9FE':'white', cursor:'pointer', fontWeight:700, fontSize:13, color:visitType===t?'#6B21A8':'var(--text-secondary)' }}>
+                      {t==='servicio'?'Servicio':'Producto del inventario'}
+                    </button>
                   ))}
                 </div>
-                {cartItems.length > 0 && (
-                  <div style={{ border:'1px solid var(--border)', borderRadius:10, padding:12 }}>
-                    {cartItems.map(c => (
-                      <div key={c.inventory_id} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
-                        <p style={{ fontSize:13, flex:1, margin:0 }}>{c.name}</p>
-                        <button onClick={() => updateQty(c.inventory_id,c.qty-1)} style={{ width:24,height:24,borderRadius:6,border:'1px solid var(--border)',background:'white',cursor:'pointer',fontWeight:700 }}>−</button>
-                        <span style={{ fontSize:13,fontWeight:700,minWidth:20,textAlign:'center' }}>{c.qty}</span>
-                        <button onClick={() => updateQty(c.inventory_id,c.qty+1)} style={{ width:24,height:24,borderRadius:6,border:'1px solid var(--border)',background:'white',cursor:'pointer',fontWeight:700 }}>+</button>
-                        <p style={{ fontSize:13,fontWeight:700,color:'var(--purple)',margin:0,minWidth:60,textAlign:'right' }}>${(c.qty*c.unit_price).toFixed(2)}</p>
-                      </div>
-                    ))}
-                    <div style={{ borderTop:'1px solid var(--border)',marginTop:8,paddingTop:8,display:'flex',justifyContent:'space-between' }}>
-                      <p style={{ fontSize:13,fontWeight:700,margin:0 }}>Total</p>
-                      <p style={{ fontSize:15,fontWeight:900,color:'var(--purple)',margin:0 }}>${cartTotal.toFixed(2)}</p>
+                {visitType==='servicio' && (
+                  <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+                    <div>
+                      <label className="label">Servicio</label>
+                      <select className="input" value={selectedServiceId} onChange={e => {
+                        const id = e.target.value
+                        setSelectedServiceId(id)
+                        if (!id) { setServiceDesc(''); setServicePrice(''); return }
+                        const svc = vetServices.find(s => s.id === id)
+                        if (!svc) return
+                        setServiceDesc(svc.name)
+                        setServicePrice(svc.price ? String(svc.price) : '')
+                      }}>
+                        <option value="">— Seleccionar servicio —</option>
+                        {vetServices.map(s => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}{s.is_bath_service?' 🛁':''}{s.price?` — $${s.price}`:''}
+                          </option>
+                        ))}
+                      </select>
                     </div>
+                    <div><label className="label">Descripción / Notas</label><input className="input" value={serviceDesc} onChange={e => setServiceDesc(e.target.value)} placeholder="Consulta, baño, vacuna..." /></div>
+                    <div><label className="label">Precio</label><input className="input" type="text" inputMode="numeric" value={servicePrice} onChange={e => setServicePrice(e.target.value)} placeholder="0.00" /></div>
                   </div>
                 )}
-              </div>
+                {visitType==='producto' && (
+                  <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+                    <input className="input" value={invSearch} onChange={e => setInvSearch(e.target.value)} placeholder="Buscar producto..." />
+                    <div style={{ maxHeight:200, overflowY:'auto', display:'flex', flexDirection:'column', gap:6 }}>
+                      {filteredInv.map(item => (
+                        <div key={item.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 12px', background:'var(--bg)', borderRadius:8 }}>
+                          <div><p style={{ fontSize:13, fontWeight:600, margin:'0 0 2px' }}>{item.name}</p><p style={{ fontSize:11, color:'var(--text-muted)', margin:0 }}>{item.unit} · Stock: {item.stock} · ${item.sale_price||0}</p></div>
+                          <button className="btn btn-primary btn-sm" onClick={() => addToCart(item)}>+ Agregar</button>
+                        </div>
+                      ))}
+                    </div>
+                    {cartItems.length > 0 && (
+                      <div style={{ border:'1px solid var(--border)', borderRadius:10, padding:12 }}>
+                        {cartItems.map(c => (
+                          <div key={c.inventory_id} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+                            <p style={{ fontSize:13, flex:1, margin:0 }}>{c.name}</p>
+                            <button onClick={() => updateQty(c.inventory_id,c.qty-1)} style={{ width:24,height:24,borderRadius:6,border:'1px solid var(--border)',background:'white',cursor:'pointer',fontWeight:700 }}>−</button>
+                            <span style={{ fontSize:13,fontWeight:700,minWidth:20,textAlign:'center' }}>{c.qty}</span>
+                            <button onClick={() => updateQty(c.inventory_id,c.qty+1)} style={{ width:24,height:24,borderRadius:6,border:'1px solid var(--border)',background:'white',cursor:'pointer',fontWeight:700 }}>+</button>
+                            <p style={{ fontSize:13,fontWeight:700,color:'var(--purple)',margin:0,minWidth:60,textAlign:'right' }}>${(c.qty*c.unit_price).toFixed(2)}</p>
+                          </div>
+                        ))}
+                        <div style={{ borderTop:'1px solid var(--border)',marginTop:8,paddingTop:8,display:'flex',justifyContent:'space-between' }}>
+                          <p style={{ fontSize:13,fontWeight:700,margin:0 }}>Total</p>
+                          <p style={{ fontSize:15,fontWeight:900,color:'var(--purple)',margin:0 }}>${cartTotal.toFixed(2)}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div style={{ display:'flex', gap:10, marginTop:16 }}>
+                  <button className="btn btn-secondary" onClick={() => setShowVisit(false)} style={{ flex:1, justifyContent:'center' }}>Cancelar</button>
+                  <button className="btn btn-primary" onClick={saveVisit} disabled={visitType==='servicio'?!serviceDesc:cartItems.length===0} style={{ flex:2, justifyContent:'center' }}>
+                    Registrar visita {visitType==='producto'&&cartItems.length>0?`· $${cartTotal.toFixed(2)}`:''}
+                  </button>
+                </div>
+              </>
             )}
-            <div style={{ display:'flex', gap:10, marginTop:16 }}>
-              <button className="btn btn-secondary" onClick={() => setShowVisit(false)} style={{ flex:1, justifyContent:'center' }}>Cancelar</button>
-              <button className="btn btn-primary" onClick={saveVisit} disabled={visitType==='servicio'?!serviceDesc:cartItems.length===0} style={{ flex:2, justifyContent:'center' }}>
-                Registrar visita {visitType==='producto'&&cartItems.length>0?`· $${cartTotal.toFixed(2)}`:''}
-              </button>
-            </div>
           </div>
         </div>
       )}
