@@ -352,3 +352,237 @@ body {
 
 /* Cards con entrada suave */
 .card { animation: fadeSlideIn 0.25s ease 0.05s both; }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   PLAN BÁSICO — Layout mobile-first
+   ════════════════════════════════════════════════════════════════════════════ */
+
+.basic-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  max-width: 480px;
+  margin: 0 auto;
+  background: var(--bg);
+  padding-bottom: 64px;
+}
+
+.basic-content { flex: 1; padding: 16px; }
+
+/* Header de cada pantalla con botón volver */
+.basic-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: white;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.basic-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: white;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.basic-back:hover { background: var(--bg); }
+
+.basic-title { font-size: 16px; font-weight: 800; margin: 0; }
+
+.basic-screen { display: flex; flex-direction: column; min-height: 100vh; }
+
+.basic-body { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+
+.basic-field { display: flex; flex-direction: column; gap: 6px; }
+
+.basic-readonly {
+  padding: 9px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text-secondary);
+  text-transform: capitalize;
+}
+
+/* Tarjeta de mascota encontrada */
+.basic-pet-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--purple-lighter);
+  border: 1.5px solid var(--purple);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+}
+
+.basic-pet-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-md);
+  background: var(--purple-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  font-size: 22px;
+  color: var(--purple);
+}
+
+.basic-pet-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.basic-pet-name { font-size: 16px; font-weight: 800; margin: 0 0 2px; }
+.basic-pet-meta { font-size: 12px; color: var(--text-secondary); margin: 0; text-transform: capitalize; }
+.basic-pet-owner { font-size: 12px; color: var(--purple); font-weight: 600; margin: 2px 0 0; }
+
+/* Grid de motivos de visita */
+.basic-visit-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.basic-visit-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 10px;
+  border-radius: var(--radius-lg);
+  border: 1.5px solid var(--border);
+  background: white;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.basic-visit-btn i { font-size: 22px; }
+
+.basic-visit-btn:hover { border-color: var(--purple); }
+
+.basic-visit-btn.active {
+  border-color: var(--purple);
+  background: var(--purple-lighter);
+  color: var(--purple);
+}
+
+/* Pantalla de éxito */
+.basic-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+  padding: 40px 16px;
+}
+
+.basic-success-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--green-light);
+  color: var(--green);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  margin-bottom: 8px;
+}
+
+.basic-success-title { font-size: 17px; font-weight: 800; margin: 0; }
+.basic-success-text { font-size: 13px; color: var(--text-secondary); margin: 0 0 16px; }
+
+/* Bottom nav */
+.basic-nav {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  max-width: 480px;
+  margin: 0 auto;
+  background: white;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-around;
+  padding: 8px 0;
+  z-index: 50;
+}
+
+.basic-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 16px;
+}
+
+.basic-nav-item i { font-size: 20px; }
+
+.basic-nav-item.active { color: var(--purple); }
+
+/* Tarjetas grandes del home básico */
+.basic-action-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.basic-action-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 12px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: white;
+  cursor: pointer;
+  text-align: center;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.basic-action-card:hover { transform: scale(1.02); box-shadow: var(--shadow-md); }
+
+.basic-action-card.primary {
+  grid-column: 1 / -1;
+  background: var(--gradient);
+  border: none;
+  color: white;
+  padding: 24px 12px;
+}
+
+.basic-action-card i { font-size: 28px; color: var(--purple); }
+.basic-action-card.primary i { color: white; font-size: 32px; }
+
+.basic-action-label { font-size: 13px; font-weight: 800; margin: 0; }
+.basic-action-card.primary .basic-action-label { font-size: 15px; }
+.basic-action-sub { font-size: 11px; color: var(--text-muted); margin: 0; }
+.basic-action-card.primary .basic-action-sub { color: rgba(255,255,255,0.8); }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   RESPONSIVE — sidebar colapsable en pantallas pequeñas
+   ════════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  .vet-shell.has-basic-shell { display: block; }
+  .vet-shell.has-basic-shell .sidebar { display: none; }
+  .vet-shell.has-basic-shell .main-content { margin-left: 0; }
+}

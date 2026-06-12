@@ -12,6 +12,7 @@ import Settings from './pages/Settings'
 import OnboardingVet from './pages/OnboardingVet'
 import Plans from './pages/Plans'
 import SupportVet from './pages/SupportVet'
+import BasicHome from './pages/BasicHome'
 
 // ─── DEFINICIÓN OFICIAL DE PLANES ────────────────────────────────────────────
 export const PLANS_DEF = {
@@ -214,6 +215,11 @@ export default function App() {
   const can     = planCan(plan)
   const planDef = PLANS_DEF[plan] || PLANS_DEF.basic
   const allowedNav = NAV.filter(n => n.plans.includes(plan))
+
+  // ─── PLAN BÁSICO: shell mobile-first independiente, sin sidebar ────────────
+  if (plan === 'basic') {
+    return <BasicHome clinic={clinic} session={session} onUpdate={setClinic} onPlans={() => {}} />
+  }
 
   const renderPage = () => {
     switch(page) {
