@@ -293,6 +293,12 @@ export default function Settings({ clinic, session, onUpdate }) {
             <p style={{ fontSize:11, color:'var(--text-muted)', margin:0 }}>Requeridos para validez oficial en carnets y certificados de viaje</p>
           </div>
         </div>
+        {(!form.nombre_vet || !form.cedula) && (
+          <div style={{ background:'#FEF3C7', border:'1px solid #F59E0B', borderRadius:10, padding:'10px 14px', marginBottom:14, fontSize:12, color:'#92400E', display:'flex', alignItems:'flex-start', gap:8 }}>
+            <i className="ti ti-alert-triangle" style={{ fontSize:15, flexShrink:0, marginTop:1 }} />
+            <span><strong>Obligatorio:</strong> sin estos datos no podrás generar certificados de salud ni actualizar carnets con validez oficial.</span>
+          </div>
+        )}
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
           <div style={{ gridColumn:'1/-1' }}>
             <label className="label">Nombre completo del veterinario responsable</label>
@@ -373,7 +379,7 @@ export default function Settings({ clinic, session, onUpdate }) {
       {/* ── Plan ── */}
       <div className="card">
         <p style={cardSec()}>Plan actual</p>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:14 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(3, minmax(0,1fr))', gap:14 }}>
           {PLANS.map(p => (
             <div key={p.id} style={{ padding:16, borderRadius:14, border:`2px solid ${clinic.plan===p.id?p.color:'var(--border)'}`, background:clinic.plan===p.id?`${p.color}10`:'white', transition:'all 0.15s' }}>
               <p style={{ fontSize:14, fontWeight:800, color:p.color, margin:'0 0 4px' }}>{p.name}</p>
@@ -382,13 +388,13 @@ export default function Settings({ clinic, session, onUpdate }) {
               </p>
               {clinic.plan===p.id
                 ? <span className="badge badge-green">Plan activo</span>
-                : <button className="btn btn-secondary btn-sm" onClick={() => alert('Contacta a Lumi para cambiar tu plan: hola@getlumi.mx')}>Cambiar</button>
+                : <button className="btn btn-secondary btn-sm" onClick={() => alert('Para cambiar de plan, contacta a Soporte Lumi desde el menú "Soporte Lumi" en tu panel.')}>Cambiar</button>
               }
             </div>
           ))}
         </div>
         <p style={{ fontSize:12, color:'var(--text-muted)', marginTop:12 }}>
-          Para cambiar de plan escríbenos a <strong>hola@getlumi.mx</strong>
+          Para cambiar de plan, solicítalo a <strong>Soporte Lumi</strong> desde tu panel.
         </p>
       </div>
 

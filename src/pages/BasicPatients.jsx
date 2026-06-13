@@ -24,6 +24,7 @@ export default function BasicPatients({ clinic, onNavigate }) {
   const [records, setRecords]   = useState([])
   const [vaccines, setVaccines] = useState([])
   const [certificates, setCertificates] = useState([])
+  const [ownerPoints, setOwnerPoints] = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
 
   useEffect(() => { fetchPatients() }, [])
@@ -43,14 +44,18 @@ export default function BasicPatients({ clinic, onNavigate }) {
   const openPatient = async (p) => {
     setSelected(p)
     setDetailLoading(true)
-    const [recRes, vacRes, certRes] = await Promise.all([
+    const [recRes, vacRes, certRes, pointsRes] = await Promise.all([
       supabase.from('vet_records').select('*').eq('clinic_id', clinic.id).eq('pet_id', p.pet_id).order('created_at', { ascending: false }),
       supabase.from('vaccines').select('*').eq('pet_id', p.pet_id).order('created_at', { ascending: false }),
       supabase.from('health_certificates').select('*').eq('pet_id', p.pet_id).eq('clinic_id', clinic.id).order('issued_at', { ascending: false }),
+      p.owner_id
+        ? supabase.from('user_points_total').select('total_points').eq('user_id', p.owner_id).maybeSingle()
+        : Promise.resolve({ data: null }),
     ])
     setRecords(recRes.data || [])
     setVaccines(vacRes.data || [])
     setCertificates(certRes.data || [])
+    setOwnerPoints(pointsRes?.data?.total_points ?? null)
     setDetailLoading(false)
   }
 
@@ -92,6 +97,12 @@ export default function BasicPatients({ clinic, onNavigate }) {
               {owner?.phone && <span style={{ fontSize: 13 }}><i className="ti ti-phone" style={{ color: 'var(--purple)', marginRight: 6 }} />{owner.phone}</span>}
               {owner?.email && <span style={{ fontSize: 13 }}><i className="ti ti-mail" style={{ color: 'var(--purple)', marginRight: 6 }} />{owner.email}</span>}
             </div>
+            {ownerPoints !== null && (
+              <div style={{ marginTop: 10, padding: '7px 12px', background: '#FEF3C7', borderRadius: 8, fontSize: 12, color: '#92400E', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <i className="ti ti-star" style={{ fontSize: 14 }} />
+                {ownerPoints} puntos Lumi acumulados
+              </div>
+            )}
           </div>
 
           {detailLoading ? (

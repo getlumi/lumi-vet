@@ -45,10 +45,24 @@ export default function OnboardingVet({ session, onComplete }) {
   const [saving, setSaving]       = useState(false)
   const [geoStatus, setGeoStatus] = useState(null)
   const [schedule, setSchedule]   = useState(defaultSchedule())
+  const [whatsappEdited, setWhatsappEdited] = useState(false)
   const [form, setForm]           = useState({
     name:'', address:'', city:'', state:'', phone:'', whatsapp:'',
     email: session?.user?.email || '', description:'',
   })
+
+  const handlePhoneChange = (value) => {
+    setForm(v => ({
+      ...v,
+      phone: value,
+      whatsapp: whatsappEdited ? v.whatsapp : value,
+    }))
+  }
+
+  const step2Complete = Boolean(
+    form.name.trim() && form.address.trim() && form.city.trim() &&
+    form.state.trim() && form.phone.trim() && form.whatsapp.trim() && form.email.trim()
+  )
 
   const toggleDay = (dayId) =>
     setSchedule(s => ({ ...s, [dayId]: { ...s[dayId], open: !s[dayId].open } }))
@@ -65,7 +79,7 @@ export default function OnboardingVet({ session, onComplete }) {
   }
 
   const handleSave = async () => {
-    if (!form.name || !form.city) return
+    if (!step2Complete) return
     setSaving(true)
     setGeoStatus('loading')
 
@@ -207,31 +221,38 @@ export default function OnboardingVet({ session, onComplete }) {
                 </div>
 
                 <div>
-                  <label className="label">Estado</label>
+                  <label className="label">Estado *</label>
                   <input className="input" value={form.state}
                     onChange={e => setForm(v=>({...v,state:e.target.value}))}
-                    placeholder="Quintana Roo" />
+                    placeholder="Quintana Roo"
+                    style={{ borderColor: form.state.trim() ? undefined : '#FCA5A5' }} />
                 </div>
 
                 <div>
-                  <label className="label">Teléfono</label>
+                  <label className="label">Teléfono *</label>
                   <input className="input" type="tel" value={form.phone}
-                    onChange={e => setForm(v=>({...v,phone:e.target.value}))}
-                    placeholder="+52 998 123 4567" />
+                    onChange={e => handlePhoneChange(e.target.value)}
+                    placeholder="+52 998 123 4567"
+                    style={{ borderColor: form.phone.trim() ? undefined : '#FCA5A5' }} />
                 </div>
 
                 <div>
-                  <label className="label">WhatsApp</label>
+                  <label className="label">WhatsApp *</label>
                   <input className="input" type="tel" value={form.whatsapp}
-                    onChange={e => setForm(v=>({...v,whatsapp:e.target.value}))}
-                    placeholder="+52 998 123 4567" />
+                    onChange={e => { setWhatsappEdited(true); setForm(v=>({...v,whatsapp:e.target.value})) }}
+                    placeholder="+52 998 123 4567"
+                    style={{ borderColor: form.whatsapp.trim() ? undefined : '#FCA5A5' }} />
+                  <p style={{ fontSize:11, color:'#6B7280', margin:'4px 0 0' }}>
+                    Se autocompleta con tu teléfono — puedes editarlo si es diferente
+                  </p>
                 </div>
 
                 <div style={{ gridColumn:'1/-1' }}>
-                  <label className="label">Email de contacto</label>
+                  <label className="label">Email de contacto *</label>
                   <input className="input" type="email" value={form.email}
                     onChange={e => setForm(v=>({...v,email:e.target.value}))}
-                    placeholder="clinica@email.com" />
+                    placeholder="clinica@email.com"
+                    style={{ borderColor: form.email.trim() ? undefined : '#FCA5A5' }} />
                 </div>
 
                 <div style={{ gridColumn:'1/-1' }}>
@@ -254,8 +275,8 @@ export default function OnboardingVet({ session, onComplete }) {
                   ← Volver
                 </button>
                 <button className="btn btn-primary" onClick={() => setStep(3)}
-                  disabled={!form.name || !form.city || !form.address}
-                  style={{ flex:2, justifyContent:'center', padding:'13px', opacity:(!form.name||!form.city||!form.address)?0.5:1 }}>
+                  disabled={!step2Complete}
+                  style={{ flex:2, justifyContent:'center', padding:'13px', opacity: step2Complete ? 1 : 0.5 }}>
                   Continuar → Horarios
                 </button>
               </div>
