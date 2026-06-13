@@ -1,4 +1,5 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
 import VisitRegister from './VisitRegister'
 import VisitCarnet from './VisitCarnet'
 import VisitCertificate from './VisitCertificate'
@@ -33,6 +34,35 @@ const NAV_ITEMS = [
 
 export default function BasicHome({ clinic, session, onUpdate, onPlans }) {
   const [view, setView] = useState('home')
+  const [ranking, setRanking] = useState({ avg: 0, count: 0 })
+  const [showReviews, setShowReviews] = useState(false)
+  const [reviews, setReviews] = useState([])
+  const [reviewsLoading, setReviewsLoading] = useState(false)
+
+  useEffect(() => { fetchRanking() }, [clinic.id])
+
+  const fetchRanking = async () => {
+    const { data } = await supabase.from('vet_reviews').select('rating').eq('clinic_id', clinic.id)
+    if (data && data.length > 0) {
+      const avg = data.reduce((sum, r) => sum + r.rating, 0) / data.length
+      setRanking({ avg: avg.toFixed(1), count: data.length })
+    } else {
+      setRanking({ avg: 0, count: 0 })
+    }
+  }
+
+  const openReviews = async () => {
+    setShowReviews(true)
+    setReviewsLoading(true)
+    const { data, error } = await supabase
+      .from('vet_reviews')
+      .select('*, pets(name)')
+      .eq('clinic_id', clinic.id)
+      .order('created_at', { ascending: false })
+    if (error) console.error('[BasicHome] reviews error:', error.message)
+    setReviews(data || [])
+    setReviewsLoading(false)
+  }
 
   const navigate = (v) => setView(v)
 
@@ -60,7 +90,20 @@ export default function BasicHome({ clinic, session, onUpdate, onPlans }) {
   return (
     <div className="basic-shell">
       <div className="basic-content">
-        <div style={{ marginBottom: 20 }}>
+        <div style={{ marginBottom: 20, position: 'relative', overflow: 'hidden', borderRadius: 12 }}>
+          {clinic.logo_url && (
+            <img
+              src={clinic.logo_url}
+              alt=""
+              aria-hidden="true"
+              style={{
+                position: 'absolute', right: -4, top: '50%', transform: 'translateY(-50%)',
+                height: 64, width: 'auto', objectFit: 'contain',
+                opacity: 0.35, pointerEvents: 'none', userSelect: 'none',
+                filter: 'grayscale(15%)',
+              }}
+            />
+          )}
           <p style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)', letterSpacing: '0.3px', margin: '0 0 4px', textTransform: 'capitalize' }}>
             {getTodayStr()}
           </p>
@@ -80,6 +123,25 @@ export default function BasicHome({ clinic, session, onUpdate, onPlans }) {
           ))}
         </div>
 
+        <button onClick={openReviews} style={{
+          width: '100%', marginTop: 12, padding: '12px 14px', borderRadius: 12,
+          border: '1px solid var(--border)', background: 'white', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', textAlign: 'left',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <i className="ti ti-message-2" style={{ fontSize: 18, color: 'var(--purple)' }} aria-hidden="true" />
+            <p style={{ fontSize: 13, fontWeight: 700, margin: 0 }}>Comentarios ({ranking.count})</p>
+          </div>
+          {ranking.count > 0 ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 14, fontWeight: 800, color: '#D97706' }}>{ranking.avg}</span>
+              <i className="ti ti-star-filled" style={{ fontSize: 14, color: '#F59E0B' }} aria-hidden="true" />
+            </div>
+          ) : (
+            <i className="ti ti-chevron-right" style={{ fontSize: 16, color: 'var(--text-muted)' }} aria-hidden="true" />
+          )}
+        </button>
+
         <div style={{ background: '#DCFCE7', borderRadius: 12, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10, marginTop: 16 }}>
           <i className="ti ti-star" style={{ fontSize: 18, color: '#16A34A' }} aria-hidden="true" />
           <p style={{ fontSize: 12, color: '#15803D', margin: 0 }}>Cada visita registrada suma puntos Lumi al dueño de la mascota</p>
@@ -92,6 +154,55 @@ export default function BasicHome({ clinic, session, onUpdate, onPlans }) {
       </div>
 
       <BottomNav active="home" onNavigate={navigate} />
+
+      {showReviews && (
+        <div onClick={(e) => { if (e.target === e.currentTarget) setShowReviews(false) }}
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+          <div style={{ width: '100%', maxWidth: 480, maxHeight: '80vh', background: 'white', borderRadius: '18px 18px 0 0', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <p style={{ fontSize: 15, fontWeight: 800, margin: 0 }}>Comentarios</p>
+                {ranking.count > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#D97706' }}>{ranking.avg}</span>
+                    <i className="ti ti-star-filled" style={{ fontSize: 13, color: '#F59E0B' }} />
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>· {ranking.count} {ranking.count === 1 ? 'calificación' : 'calificaciones'}</span>
+                  </div>
+                )}
+              </div>
+              <button onClick={() => setShowReviews(false)} className="btn btn-secondary btn-sm">Cerrar</button>
+            </div>
+
+            <div style={{ overflowY: 'auto', flex: 1, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {reviewsLoading ? (
+                <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 24 }}>Cargando...</p>
+              ) : reviews.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--text-muted)' }}>
+                  <i className="ti ti-message-2" style={{ fontSize: 32, display: 'block', marginBottom: 8 }} />
+                  <p style={{ fontSize: 13 }}>Sin comentarios todavía</p>
+                </div>
+              ) : (
+                reviews.map(r => (
+                  <div key={r.id} style={{ padding: 12, background: 'var(--bg)', borderRadius: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <div style={{ display: 'flex', gap: 2 }}>
+                        {[1,2,3,4,5].map(s => (
+                          <i key={s} className={`ti ${s <= r.rating ? 'ti-star-filled' : 'ti-star'}`} style={{ fontSize: 13, color: s <= r.rating ? '#F59E0B' : 'var(--border)' }} />
+                        ))}
+                      </div>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        {new Date(r.created_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </span>
+                    </div>
+                    {r.pets?.name && <p style={{ fontSize: 11, color: 'var(--purple)', fontWeight: 700, margin: '0 0 2px' }}>{r.pets.name}</p>}
+                    {r.comment && <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>{r.comment}</p>}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
